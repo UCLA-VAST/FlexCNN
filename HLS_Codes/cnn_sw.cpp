@@ -33,8 +33,6 @@
 #define LAYER5_K 3
 
 
-
-
 // Extract hardware outputs
 void openpose_postprocess(
   data_t0* cin_hw,
@@ -79,6 +77,7 @@ void mobilenet_preprocess(
   cout << std::fixed << "Preparing data..." << endl;
   
   
+  
   // first layer
   const int input_in_num = 3;
   const int input_h = 384;
@@ -101,8 +100,8 @@ void mobilenet_preprocess(
   // Load the inputs for the network
   static data_t0 LAYER1_cin[input_in_num][input_h][input_w];
   cout << "Loading input..." << endl; 
-  string file_path = string(prj_path_c) + "/data_layer/input.dat";  
-  //string file_path = string(prj_path_c) + "/data/conv0_input.dat"; 
+  //string file_path = string(prj_path_c) + "/data_layer/input.dat";  
+  string file_path = string(prj_path_c) + "/data/conv0_input.dat"; 
   ifstream input_file(file_path.c_str());
   if (input_file.is_open()){
 
@@ -141,6 +140,8 @@ void mobilenet_preprocess(
   //ifstream weight_file(file_path.c_str(), ios::binary | ios::in);
   //bin_input = new char[sizeof(data_t1) * WEIGHT_SIZE];
   if (weight_file.is_open()){
+    //weight_file.read(bin_input, sizeof(data_t1) * WEIGHT_SIZE);
+    //data_t1* convt_input = (data_t1*)bin_input;
 
     for (int w = 0; w < weight_size; w++){
       weight_file >> weight_hw[w];
@@ -177,16 +178,11 @@ void mobilenet_preprocess(
 
   // Load outputs
   cout << "Loading output..." << endl;
-  //file_path = string(prj_path_c) + "/data_layer/expand_relu.dat";
-  //file_path = string(prj_path_c) + "/data/stage6_l2_5.dat";
-  file_path = string(prj_path_c) + "/data_layer/output.dat";
-  //file_path = string(prj_path_c) + "/data_layer/conv0_relu.dat";
+  file_path = string(prj_path_c) + "/data/stage6_l2_5.dat";
+  //file_path = string(prj_path_c) + "/data_layer/output.dat";
   ifstream output_file(file_path.c_str()); 
 
   if (output_file.is_open()){
-    //output_file.read(bin_input, sizeof(data_t0) * (STAGE2L_OUT_H * STAGE2L_OUT_W * STAGE2L_OUT_NUM + STAGE2R_OUT_H * STAGE2R_OUT_W * STAGE2R_OUT_NUM));
-    //data_t0* convt_input = (data_t0*)bin_input;
-
     int idx = 0;
     for (int o = 0; o < STAGE2R_OUT_NUM; o++)
       for (int h = 0; h < out_h; h++)

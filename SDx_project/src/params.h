@@ -8,7 +8,7 @@
 #define K_T 3
 #define K_T_S 5
 #define LAYER_NUM 87
-#define VGG_LAYERS 10
+#define VGG_LAYERS 88
 #define MobileNetV2_LAYERS 0
 #define STAGE1_LAYERS 0
 #define STAGE1_ITER 1

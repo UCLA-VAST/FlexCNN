@@ -1,3 +1,4 @@
+
 /**********
 Copyright (c) 2017, Xilinx, Inc.
 All rights reserved.
@@ -43,25 +44,21 @@ void instInit(
   cout << "Loading instructions..." << endl;
   char* prj_path_c = getenv("PRJ_PATH");
   string prj_path = prj_path_c;
-  string file_path = prj_path + "/inst_gen/openpose.insts";
+  string file_path = prj_path + "/data/openpose.insts";
   ifstream in_file(file_path.c_str());
   
   
   // model configuration
-  config[0] = VGG_LAYERS;
+  config[0] = LAYER_NUM;
   config[1] = MobileNetV2_LAYERS;
   config[2] = STAGE1_LAYERS;
   config[3] = STAGE2_LAYERS;
   config[4] = STAGE2_ITER;
-//  config[0] = 1;
-//  config[1] = 0;
-//  config[2] = 0;
-//  config[3] = 0;
 
 
 
-uint layer_num = config[0] + config[1] * 2 - 1 + config[2] * 2 + config[3] * 2 * config[4];
-cout << layer_num << endl;
+ uint layer_num = config[0];
+ cout << "Layer num: " << layer_num << endl;
 
   if (in_file.is_open()){
     for (int layer_id = 0; layer_id < LAYER_NUM; layer_id++){
@@ -70,9 +67,6 @@ cout << layer_num << endl;
       while(param_cnt < CONFIG_PARAMS){
         in_file >> p;
         config[5 + layer_id * CONFIG_PARAMS + param_cnt] = p;
-//        if (layer_id == 0){
-//          cout << p << endl;
-//        }
         param_cnt++;
       }
     }
@@ -101,6 +95,7 @@ int main(int argc, char** argv)
   unsigned int bias_size = BIAS_SIZE;
   unsigned int weight_size = WEIGHT_SIZE;
   unsigned int config_size = 5 + LAYER_NUM * CONFIG_PARAMS;
+  //int layer_num =
   
   std::cout << "cin_size: " << cin_size << endl;
   std::cout << "bias_size: " << bias_size << endl;
@@ -162,7 +157,6 @@ int main(int argc, char** argv)
 
   cl::Context context(device);
   cl::CommandQueue q(context, device, CL_QUEUE_PROFILING_ENABLE);
-  cl::CommandQueue q2(context, device, CL_QUEUE_PROFILING_ENABLE);
   std::string device_name = device.getInfo<CL_DEVICE_NAME>(); 
   std::cout << "device name: " << device_name << endl;
   
@@ -201,16 +195,7 @@ int main(int argc, char** argv)
 
   // Allocate Buffer in Global Memory
   std::vector<cl::Memory> inBufVec, outBufVec;
-  /*
-  cl::Buffer buffer_cin(context,CL_MEM_USE_HOST_PTR | CL_MEM_READ_WRITE,
-            cin_size*sizeof(data_t0), cin_hw.data());
-  cl::Buffer buffer_weight(context,CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY,
-            weight_size*sizeof(data_t1), weight_hw.data());
-  cl::Buffer buffer_bias(context,CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY,
-            bias_size*sizeof(data_t2), bias_hw.data());
-  cl::Buffer buffer_config(context,CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY,
-            config_size*sizeof(unsigned int), config_hw.data());
-  */
+  
   //gettimeofday(&start, NULL);
   cl::Buffer buffer_cin(context,CL_MEM_USE_HOST_PTR | CL_MEM_READ_WRITE | CL_MEM_EXT_PTR_XILINX,
             cin_size*sizeof(data_t0), &GlobMem_BUF_in0_Ext);
@@ -229,58 +214,6 @@ int main(int argc, char** argv)
   outBufVec.push_back(buffer_cin);
   
   
-  ////// for 2nd command queue //////
-  
-  cl_mem_ext_ptr_t GlobMem_BUF_in0_Ext2;
-  GlobMem_BUF_in0_Ext2.param = 0; 
-  GlobMem_BUF_in0_Ext2.flags = XCL_MEM_DDR_BANK0;
-  GlobMem_BUF_in0_Ext2.obj = cin_hw2.data();
-
-  cl_mem_ext_ptr_t GlobMem_BUF_in1_Ext2;
-  GlobMem_BUF_in1_Ext2.param = 0;
-  GlobMem_BUF_in1_Ext2.flags = XCL_MEM_DDR_BANK1;
-  GlobMem_BUF_in1_Ext2.obj = weight_hw.data();
-
-  cl_mem_ext_ptr_t GlobMem_BUF_in2_Ext2;
-  GlobMem_BUF_in2_Ext2.param = 0;
-  GlobMem_BUF_in2_Ext2.flags = XCL_MEM_DDR_BANK1;
-  GlobMem_BUF_in2_Ext2.obj = bias_hw.data();
-
-  cl_mem_ext_ptr_t GlobMem_BUF_in3_Ext2;
-  GlobMem_BUF_in3_Ext2.param = 0;
-  GlobMem_BUF_in3_Ext2.flags = XCL_MEM_DDR_BANK0;
-  GlobMem_BUF_in3_Ext2.obj = config_hw.data();  
-
-  // Allocate Buffer in Global Memory
-  std::vector<cl::Memory> inBufVec2, outBufVec2;
-  /*
-  cl::Buffer buffer_cin(context,CL_MEM_USE_HOST_PTR | CL_MEM_READ_WRITE,
-            cin_size*sizeof(data_t0), cin_hw.data());
-  cl::Buffer buffer_weight(context,CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY,
-            weight_size*sizeof(data_t1), weight_hw.data());
-  cl::Buffer buffer_bias(context,CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY,
-            bias_size*sizeof(data_t2), bias_hw.data());
-  cl::Buffer buffer_config(context,CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY,
-            config_size*sizeof(unsigned int), config_hw.data());
-  */
-  
-  cl::Buffer buffer_cin2(context,CL_MEM_USE_HOST_PTR | CL_MEM_READ_WRITE | CL_MEM_EXT_PTR_XILINX,
-            cin_size*sizeof(data_t0), &GlobMem_BUF_in0_Ext2);
-  cl::Buffer buffer_weight2(context,CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY | CL_MEM_EXT_PTR_XILINX,
-            weight_size*sizeof(data_t1), &GlobMem_BUF_in1_Ext2);
-  cl::Buffer buffer_bias2(context,CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY | CL_MEM_EXT_PTR_XILINX,
-            bias_size*sizeof(data_t2), &GlobMem_BUF_in2_Ext2);
-  cl::Buffer buffer_config2(context,CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY | CL_MEM_EXT_PTR_XILINX,
-            config_size*sizeof(unsigned int), &GlobMem_BUF_in3_Ext2);
-            
-  inBufVec2.push_back(buffer_cin2);
-  inBufVec2.push_back(buffer_cin2);
-  inBufVec2.push_back(buffer_weight2);
-  inBufVec2.push_back(buffer_bias2);
-  inBufVec2.push_back(buffer_config2);
-  outBufVec2.push_back(buffer_cin2);
-
-  
   // Set the Kernel Arguments
   krnl_vadd.setArg(0,buffer_cin);
   krnl_vadd.setArg(1,buffer_cin);
@@ -289,13 +222,6 @@ int main(int argc, char** argv)
   krnl_vadd.setArg(4,buffer_bias);
   krnl_vadd.setArg(5,buffer_config); 
   
-  // Set the Kernel Arguments
-  krnl_vadd2.setArg(0,buffer_cin2);
-  krnl_vadd2.setArg(1,buffer_cin2);
-  krnl_vadd2.setArg(2,buffer_cin2);
-  krnl_vadd2.setArg(3,buffer_weight2);
-  krnl_vadd2.setArg(4,buffer_bias2);
-  krnl_vadd2.setArg(5,buffer_config2); 
   
   //gettimeofday(&start, NULL);
 
@@ -309,12 +235,10 @@ int main(int argc, char** argv)
   
   
   // Launch the Kernel
-//  std::cout << "Kernel launched!" << endl;
+  std::cout << "Kernel launched!" << endl;
   gettimeofday(&start, NULL);
-  for (int i = 0; i < 1; i++){
-    q.enqueueTask(krnl_vadd);
-    q.finish();
-  }
+  q.enqueueTask(krnl_vadd);
+  q.finish();
   gettimeofday(&end, NULL);
   // Copy Result from Device Global Memory to Host Local Memory  
   q.enqueueMigrateMemObjects(outBufVec,CL_MIGRATE_MEM_OBJECT_HOST);
@@ -338,7 +262,7 @@ int main(int argc, char** argv)
         cout << res << endl;
       }
 #endif  
-  
+
   // Extract hardware outputs
   for (int i = 0; i < cin_size; i++)
     cin_hw_cpu[i] = cin_hw[i];
@@ -352,7 +276,8 @@ int main(int argc, char** argv)
   // Compare the results of the Device to the simulation
   std::cout << "Results comparison..." << endl;
   int err_cnt = 0;
-  bool test = true;
+  bool test = false;
+  
       
   if (test){
   for (int h = 0; h < STAGE2L_OUT_H; h++)
@@ -368,8 +293,7 @@ int main(int argc, char** argv)
         }
       }
       
-      
-      }
+  }
      
   delete[] cin_sw;
   delete[] weight_sw;
