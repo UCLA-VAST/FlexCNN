@@ -15,7 +15,7 @@
 #include "params.h"
 
 //#define DEBUG
-//#define DEBUG_layer
+#define DEBUG_layer
 //#define DEBUG_engine
 //#define DEBUG_weight
 //#define DEBUG_weight2
