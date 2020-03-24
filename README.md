@@ -14,7 +14,8 @@ In this repo, we use OpenPose to demonstrate our flow.
 2. [Requirements and Dependencies](#Requirements-and-Dependencies)
 3. [Project File Tree](#Project-File-Tree)
 4. [Run the Project](#Run-the-Project)
-5. [API And Usage](#API-And-Usage)
+5. [API and Usage](#API-and-Usage)
+6. [Build Your Own Hardware](#Build_Your_Own_Hardware)
 
 
 ## HardWare and Operating System
@@ -86,6 +87,8 @@ To Do
 To Do
 
 
+## Build Your Own Hardware
+To Do
  
 
 
