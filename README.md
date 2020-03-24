@@ -4,7 +4,6 @@
 
 + Atefeh Sohrabizadeh, Jie Wang, Jason Cong. [End-to-End Optimization of Deep Learning Applications](https://dl.acm.org/doi/abs/10.1145/3373087.3375321). In FPGA, 2020.
 
-===
 This repo contains the codes for building FlexCNN, an accelerator for running CNNs on FPGA, described in [here](https://dl.acm.org/doi/abs/10.1145/3373087.3375321). As mentioned in the paper, you can further integrate FlexCNN to TensorFlow and offload CNN computation of your application to FPGA.
 
 In this repo, we use OpenPose to demonstrate our flow.
@@ -28,7 +27,7 @@ For testing and depolyment, despite the os requirement above, the server/PC shou
 ## Requirements
 The [Xilinx Runtime v2018.3](https://www.xilinx.com/products/boards-and-kits/vcu1525-a.html#gettingStarted) should be installed.
 
-If also want to compile the library from source, the **Xilinx Deployment Shell v2018.3**, **Xilinx Development Shell** and **SDAccle Design Environment v2018.3** should also be installed. You can find them through [this link](https://www.xilinx.com/products/boards-and-kits/vcu1525-a.html#gettingStarted).
+If also want to compile the library from source, the **Xilinx Deployment Shell v2018.3**, **Xilinx Development Shell** and **SDAccel Design Environment v2018.3** should also be installed. You can find them through [this link](https://www.xilinx.com/products/boards-and-kits/vcu1525-a.html#gettingStarted).
 
 ## Dependencies
 This library uses the [**cmake**](https://cmake.org/) (version >= 3.0) as the building system and the [**googletest**](https://github.com/google/googletest) as the test framework. It also depends on the [**tensorflow**](https://www.tensorflow.org/).
