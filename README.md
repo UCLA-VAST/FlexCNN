@@ -4,11 +4,12 @@
 
 + Atefeh Sohrabizadeh, Jie Wang, Jason Cong. [End-to-End Optimization of Deep Learning Applications](https://dl.acm.org/doi/abs/10.1145/3373087.3375321). In FPGA, 2020.
 
+## About
 This repo contains the codes for building FlexCNN, an accelerator for running CNNs on FPGA, described in [here](https://dl.acm.org/doi/abs/10.1145/3373087.3375321). As mentioned in the paper, you can further integrate FlexCNN to TensorFlow and offload CNN computation of your application to FPGA.
 
 In this repo, we use OpenPose to demonstrate our flow.
 
-# Content
+## Content
 1. [Hardware and Operating System](#Hardware-and-Operating-System)
 2. [Requirements and Dependencies](#Requirements-and-Dependencies)
 3. [Project File Tree](#Project-File-Tree)
@@ -16,24 +17,24 @@ In this repo, we use OpenPose to demonstrate our flow.
 5. [API And Usage](#API-And-Usage)
 
 
-# HardWare and Operating System
-## Development
+## HardWare and Operating System
+### Development
 For development, the OS should be **Ubuntu 18.04 LTS**
 ## Testing and Deployment 
 For testing and depolyment, despite the os requirement above, the server/PC should also equips with [Xilinx Virtex UltraScale+ FPGA VCU1525 Development Kit](https://www.xilinx.com/products/boards-and-kits/vcu1525-a.html)
 
-# Requirements and Dependencies
+## Requirements and Dependencies
 
-## Requirements
+### Requirements
 The [Xilinx Runtime v2018.3](https://www.xilinx.com/products/boards-and-kits/vcu1525-a.html#gettingStarted) should be installed.
 
 If also want to compile the library from source, the **Xilinx Deployment Shell v2018.3**, **Xilinx Development Shell** and **SDAccel Design Environment v2018.3** should also be installed. You can find them through [this link](https://www.xilinx.com/products/boards-and-kits/vcu1525-a.html#gettingStarted).
 
-## Dependencies
+### Dependencies
 This library uses the [**cmake**](https://cmake.org/) (version >= 3.0) as the building system and the [**googletest**](https://github.com/google/googletest) as the test framework. It also depends on the [**tensorflow**](https://www.tensorflow.org/).
 
 
-# Project File Tree
+## Project File Tree
 The project file structure is shown below,
 ````
 .
@@ -45,7 +46,7 @@ The project file structure is shown below,
 ````
 
 
-# Run the Project
+## Run the Project
 
 1. In ./tf_DSA/tf_pose/sacc_utils.py change the following lines (give your project path)
 	````python
@@ -77,11 +78,11 @@ The project file structure is shown below,
     ````
 You should see a window opens with a man moving and his poses showing.
 
-# API and Usage
-## API
+## API and Usage
+### API
 To Do
 
-## Usage
+### Usage
 To Do
 
 
