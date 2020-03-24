@@ -7,7 +7,7 @@
 ## About
 This repo contains the codes for building FlexCNN, an accelerator for running CNNs on FPGA, described in [here](https://dl.acm.org/doi/abs/10.1145/3373087.3375321). As mentioned in the paper, you can further integrate FlexCNN to TensorFlow and offload CNN computation of your application to FPGA.
 
-In this repo, we use OpenPose to demonstrate our flow.
+In this repo, we use [OpenPose](https://arxiv.org/abs/1611.08050) to demonstrate our flow.
 
 ## Content
 1. [Hardware and Operating System](#Hardware-and-Operating-System)
