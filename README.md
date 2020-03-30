@@ -88,6 +88,37 @@ To Do
 
 
 ## Build Your Own Hardware
+### **Build the HLS kernel**
+
+1. Switch to the HLS Codes directory.
+````bash
+cd HLS_Codes
+````
+2. In the auto_compile/inst_gen folder, change the tile.json file to the systolic array size you want
+
+3. in the HLS_Codes folder, change the SIMD_LANE in pose.h to the SIMD factor you want
+
+4. in the HLS_Codes/systolic_array_kernel folder, change the followings in cnn_features.json to the configs you want
+````bash
+SA_ROWS, SA_COLS, SIMD_FACTOR, FC_SIMD_FACTOR, ROW_IL_FACTOR, COL_IL_FACTOR
+````
+Note that FC_SIMD_FACTOR should be the same as SIMD_FACTOR and
+````bash
+ROW_IL_FACTOR * SA_ROWS = OUT_NUM_T
+COL_IL_FACTOR * SA_COLS = OUT_IMG_W_T
+````
+
+5. Use the following command to generate the HLS kernel and prepare all the necessary files.
+````bash
+./design_prepare.sh
+````
+6. Now, you can run the HLS C simulation to verify the design.
+````bash
+vivado_hls -f hls_script.tcl
+````
+It will take several minutes or so to finish the C simulation. 
+
+### **Rest**
 To Do
  
 
