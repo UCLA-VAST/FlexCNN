@@ -75,7 +75,7 @@ The project file structure is shown below,
     ````
 5. Run the project
     ````bash
-    ./test.sh
+    ./test.sh [path/to/your/video/file]
     ````
 You should see a window opens with a man moving and his poses showing.
 

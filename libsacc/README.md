@@ -37,7 +37,7 @@ This library uses the [**cmake**](https://cmake.org/) (version >= 3.0) as the bu
     ````
 2. In ./src/libsacc.cpp change the following line (give your project path)
     ````python
-		std::string Sacc::lib_base_path = "/path/to/libsacc/";
+	std::string Sacc::lib_base_path = "/path/to/libsacc/";
 	````
 3. Setting environments
     ````bash
