@@ -7,8 +7,6 @@ source /opt/tools/xilinx/SDx/2018.3/settings64.sh
 source /opt/tools/xilinx/Vivado/2018.3/settings64.sh
 source /opt/xilinx/xrt/setup.sh
 
-# only need for dev
-source /opt/tools/xilinx/SDx/2018.3/settings64.sh
 
 # virtual python env
 #deactivate # in case in a different venv
