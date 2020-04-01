@@ -1,0 +1,13 @@
+{
+  "IN_NUM_T": 64,
+  "OUT_NUM_T": 64,
+  "IN_H_T": 12,
+  "IN_W_T": 96,
+  "OUT_H_T": 12,
+  "OUT_W_T": 96,
+  "K_T": 3,
+  "SA_ROWS": 8,
+  "SA_COLS": 8,
+  "SA_SIMD": 8,
+  "MAx_LAYER_BATCH": 2
+}
