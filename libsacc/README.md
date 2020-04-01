@@ -49,6 +49,8 @@ This library uses the [**cmake**](https://cmake.org/) (version >= 3.0) as the bu
     python3.6 -m venv venv
 	source venv/bin/activate
 	sudo apt-get install build-essential libcap-dev
+	pip3 install cython
+	pip3 install numpy
 	pip3 install -r requirements.txt
     ````
 5. Build the library via (execute in the root of the library: "libsacc" directory)
@@ -58,7 +60,7 @@ This library uses the [**cmake**](https://cmake.org/) (version >= 3.0) as the bu
     cmake ..
     make all
     ````
-Now, the FlexCNN library has been successfully installed in your system.
+Now, the FlexCNN library is successfully installed in your system.
 
 # API and Usage
 ## API
@@ -107,4 +109,4 @@ The `src` and `inc` contain source files and header files.
 The `data` folder contains bias and weight information used by the accelerator and the `config` contains the instructions and the FPGA binary. 
 
 # Acknowledgement
-This directory is first developed by Tong He. 
+The first version of this library was developed by Tong He. 
