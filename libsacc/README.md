@@ -49,6 +49,7 @@ This library uses the [**cmake**](https://cmake.org/) (version >= 3.0) as the bu
     python3.6 -m venv venv
 	source venv/bin/activate
 	sudo apt-get install build-essential libcap-dev
+	sudo apt install opencl-headers
 	pip3 install cython
 	pip3 install numpy
 	pip3 install -r requirements.txt
