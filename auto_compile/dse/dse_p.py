@@ -167,6 +167,8 @@ def model_latency_est(params, layer_configs, dynamic_tiling_level, concat_layers
   layer_out_num_t_list = []
   layer_in_h_t_list = []
   layer_in_w_t_list = []
+  concat_h_t = 0
+  concat_w_t = 0
   first_concat = True
   while layer_id < total_layer:
     layer_params = params.copy()
@@ -207,8 +209,12 @@ def model_latency_est(params, layer_configs, dynamic_tiling_level, concat_layers
       layer_in_w_t_candidates = [in_w_t]
     else:
       #layer_in_h_t_candidates = list(filter(lambda x : x % 2 == 0, range(1, in_h_t + 1)))
-      layer_in_h_t_candidates = [12]
-      layer_in_w_t_candidates = list(filter(lambda x : x % sa_cols == 0, range(1, in_w_t + 1)))
+      if layer_name in concat_layers_list:
+        layer_in_h_t_candidates = [concat_h_t]
+        layer_in_w_t_candidates = [concat_w_t]
+      else:
+        layer_in_h_t_candidates = [12]
+        layer_in_w_t_candidates = list(filter(lambda x : x % sa_cols == 0, range(1, in_w_t + 1)))
     
     
     opt_layer_latency = np.inf
@@ -242,6 +248,8 @@ def model_latency_est(params, layer_configs, dynamic_tiling_level, concat_layers
     if first_concat and next_layer_config['LAYER_NAME'] in concat_layers_list:
       first_concat = False
       concat_num_t = opt_layer_out_num_t
+      concat_w_t = opt_layer_in_w_t
+      concat_h_t = opt_layer_in_h_t
 #        print(concat_num_t)
 
       
@@ -410,7 +418,8 @@ def run(f_model, f_input_config, f_board, parallel_en, dynamic_tiling_level):
       continue
     if content[1] == 'upsample':
       line_id = line_id + 1
-      layer_name = content[0]
+      tensors = (content[0].strip('][')).split(', ')
+      layer_name = (tensors[0]).strip("'")
       layer_channels[layer_name] = out_num
       layer_h[layer_name] = in_h
       layer_w[layer_name] = in_w
@@ -432,7 +441,8 @@ def run(f_model, f_input_config, f_board, parallel_en, dynamic_tiling_level):
       bias_en = 1
     if len(content) > 1 and content[1] == "Pool":
       pool_en = 1
-    layer_name = content[0]
+    tensors = (content[0].strip('][')).split(', ')
+    layer_name = (tensors[0]).strip("'")
     layer_type = content[1]
 
     in_num = int(content[2])
@@ -607,7 +617,8 @@ def run(f_model, f_input_config, f_board, parallel_en, dynamic_tiling_level):
     elif content[1] == 'ConcatV2':
       model_out.write(line + '\n')
     elif content[1] == 'upsample':
-      layer_name = content[0]
+      tensors = (content[0].strip('][')).split(', ')
+      layer_name = (tensors[0]).strip("'")
       out_num = layer_channels[layer_name]
       in_h = layer_h[layer_name]
       in_w = layer_w[layer_name]
@@ -638,12 +649,12 @@ def param_sweep(params_list, config, layer_configs, concat_layers_list, total_la
     IN_W_T = params['LAYER_IN_W_T']
     SIMD_LANE = params['SIMD_LANE']
     #print(IN_NUM_T, IN_W_T, SIMD_LANE)
-    for SA_ROWS in list(filter(lambda x : IN_NUM_T % x == 0, range(1, IN_NUM_T + 1))):
-      for SA_COLS in list(filter(lambda x : IN_W_T % x == 0, range(1, IN_W_T + 1))):
-        for SA_SIMD_LANE in list(filter(lambda x : SIMD_LANE % x == 0, range(1, SIMD_LANE + 1))):
-#    for SA_ROWS in [8]:
-#      for SA_COLS in [8]:
-#        for SA_SIMD_LANE in [8]:
+#    for SA_ROWS in list(filter(lambda x : IN_NUM_T % x == 0, range(1, IN_NUM_T + 1))):
+#      for SA_COLS in list(filter(lambda x : IN_W_T % x == 0, range(1, IN_W_T + 1))):
+#        for SA_SIMD_LANE in list(filter(lambda x : SIMD_LANE % x == 0, range(1, SIMD_LANE + 1))):
+    for SA_ROWS in [8]:
+      for SA_COLS in [8]:
+        for SA_SIMD_LANE in [8]:
           params['LAYER_IN_H_T'] = IN_H_T
           params['LAYER_IN_W_T'] = IN_W_T
           params['LAYER_OUT_H_T'] = IN_H_T
@@ -687,9 +698,6 @@ def param_sweep(params_list, config, layer_configs, concat_layers_list, total_la
           cur_fps = 250 * 1e6 * (1 / latency)
           opt_fps = 250 * 1e6 * (1 / opt_latency)
           
-          #if (IN_NUM_T == 64) and (IN_W_T == 96) and (IN_H_T == 12):
-          #  print(latency, cur_fps, opt_fps)
-
 #          print(cur_fps)
           if cur_fps - opt_fps >= 0.5:
 #            print("updated FPS (%.2f -> %.2f)" % (opt_fps, cur_fps))
@@ -713,8 +721,6 @@ def param_sweep(params_list, config, layer_configs, concat_layers_list, total_la
             opt_params['LAYER_IN_H_T_LIST'] = list(params['LAYER_IN_H_T_LIST'])
             opt_params['LAYER_IN_W_T_LIST'] = list(params['LAYER_IN_W_T_LIST'])
             opt_params['FRE'] = params['FRE']
-          #if (IN_NUM_T == 64) and (IN_W_T == 96) and (IN_H_T == 12):
-          #  print(opt_latency, opt_fps)
 
   res = {}
   res['opt_latency'] = opt_latency

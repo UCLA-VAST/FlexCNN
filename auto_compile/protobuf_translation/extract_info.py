@@ -326,12 +326,12 @@ class PBPredictor:
         all_info[layer_num] = info
         
       model = open(file_name, "w")
-      model.writelines("Name,Type,Inchannel,Outchannel,ExpansionFactor,Filter,Stride,Relu,Relu6,Batchnorm,BiasAdd,Add\n")
+      model.writelines("[Name,InputTensor],Type,Inchannel,Outchannel,ExpansionFactor,Filter,Stride,Relu,Relu6,Batchnorm,BiasAdd,Add\n")
       keys = ['name', 'type', 'in_channels', 'out_channels', 'kernel_size', 'ExpansionFactor', 'stride', 'Relu', 'Relu6', 'Batchnorm', 'BiasAdd', 'Add']
       for i in all_info:
         info = all_info[i]
         if info['type'] == 'ResizeBilinear':
-          info_layer = [info['name'], 'upsample', info['in_channels'], info['out_channels'], info['kernel_size'], 1, 1, 0, 0, 0, 0, 0]
+          info_layer = [[info['name'],info['input_tensor']], 'upsample', info['in_channels'], info['out_channels'], info['kernel_size'], 1, 1, 0, 0, 0, 0, 0]
         elif info['type'] == 'Pool':
           info_layer = []
         elif info['type'] == 'ConcatV2':
@@ -339,7 +339,7 @@ class PBPredictor:
           for inf in info['input_tensor']:
             info_layer.append(inf)
         else:
-          info_layer = [info['name'], info['type'], info['in_channels'], info['out_channels'], 1, info['kernel_size'], info['stride'], info['Relu'], info['Relu6'], info['BatchNorm'], info['BiasAdd'], info['Add']]
+          info_layer = [[info['name'],info['input_tensor']], info['type'], info['in_channels'], info['out_channels'], 1, info['kernel_size'], info['stride'], info['Relu'], info['Relu6'], info['BatchNorm'], info['BiasAdd'], info['Add']]
         model.writelines(";".join(str(inf) for inf in info_layer) + "\n")
 		
       model.close()
