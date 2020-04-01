@@ -46,7 +46,7 @@ This library uses the [**cmake**](https://cmake.org/) (version >= 3.0) as the bu
     ````
 4. Installing packages
 	````bash
-    python3 -m venv venv
+    python3.6 -m venv venv
 	source venv/bin/activate
 	sudo apt-get install build-essential libcap-dev
 	pip3 install -r requirements.txt
@@ -54,6 +54,7 @@ This library uses the [**cmake**](https://cmake.org/) (version >= 3.0) as the bu
 5. Build the library via (execute in the root of the library: "libsacc" directory)
     ````bash
     mkdir build
+	cd build
     cmake ..
     make all
     ````

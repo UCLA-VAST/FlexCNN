@@ -3,6 +3,7 @@ astor==0.8.0
 certifi==2019.3.9
 chardet==3.0.4
 cycler==0.10.0
+Cython==0.29.16
 decorator==4.4.0
 dill==0.2.9
 EasyProcess==0.2.7
