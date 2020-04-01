@@ -39,7 +39,7 @@ The project file structure is shown below,
 ````
 .
 +-- auto_compile # Generating hardware configurations and the instructions for running it
-+-- data 		 # data needed for testing the HLS kernel
++-- data         # data needed for testing the HLS kernel
 +-- HLS_Codes    # HLS codes of FlexCNN
 +-- libsacc      # library for integrating FlexCNN to TensorFlow
 +-- SDx_Project  # SDAccel Project for creating FPGA binary
@@ -88,7 +88,7 @@ Setting environments. Please note that you should modify env.sh with the path to
 source env.sh
 ````
 
-###**Compilation System**
+### **Compilation System**
 We will need to generate the instructions required for the FPGA kernel and pre-process the input data and weights of the network.
 
 #### Translating the TensorFlow graph
