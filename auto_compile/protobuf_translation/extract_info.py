@@ -348,7 +348,7 @@ if __name__ == "__main__":
   parser = argparse.ArgumentParser(description='Data reorganization.')
 
   parser.add_argument('-p', '--pbtxt', metavar='PBTXT', default='./protobuf.pbtxt', help='path to protobuf text file', dest='pbtxt_path')
-  parser.add_argument('-m', '--model', metavar='MODEL', default='./network.model', help='model description', dest='model')
+  parser.add_argument('-m', '--model', metavar='MODEL', default='./network.model', help='output file showing model description', dest='model')
   parser.add_argument('-i', '--input-config', metavar='INPUT_CONFIG', default='./input.json', help='input configuration', dest='input_config')
   parser.add_argument('-g', '--graph_name', metavar='GRAPH_NAME', default='', help='graph name', dest='graph_name')
   parser.add_argument('-n', '--input_name', metavar='INPUT_NAME', default='image', help='input tensor name', dest='input_name')

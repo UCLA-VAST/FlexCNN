@@ -649,12 +649,12 @@ def param_sweep(params_list, config, layer_configs, concat_layers_list, total_la
     IN_W_T = params['LAYER_IN_W_T']
     SIMD_LANE = params['SIMD_LANE']
     #print(IN_NUM_T, IN_W_T, SIMD_LANE)
-#    for SA_ROWS in list(filter(lambda x : IN_NUM_T % x == 0, range(1, IN_NUM_T + 1))):
-#      for SA_COLS in list(filter(lambda x : IN_W_T % x == 0, range(1, IN_W_T + 1))):
-#        for SA_SIMD_LANE in list(filter(lambda x : SIMD_LANE % x == 0, range(1, SIMD_LANE + 1))):
-    for SA_ROWS in [8]:
-      for SA_COLS in [8]:
-        for SA_SIMD_LANE in [8]:
+    for SA_ROWS in list(filter(lambda x : IN_NUM_T % x == 0, range(1, IN_NUM_T + 1))):
+      for SA_COLS in list(filter(lambda x : IN_W_T % x == 0, range(1, IN_W_T + 1))):
+        for SA_SIMD_LANE in list(filter(lambda x : SIMD_LANE % x == 0, range(1, SIMD_LANE + 1))):
+#    for SA_ROWS in [8]:
+#      for SA_COLS in [8]:
+#        for SA_SIMD_LANE in [8]:
           params['LAYER_IN_H_T'] = IN_H_T
           params['LAYER_IN_W_T'] = IN_W_T
           params['LAYER_OUT_H_T'] = IN_H_T
