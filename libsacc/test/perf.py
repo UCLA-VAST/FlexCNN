@@ -11,7 +11,7 @@ class PerfTest:
         self.c = utils.Constants()
         self.test_input = tf.placeholder(tf.float32, shape=(1, 384, 384, 3))
         self.sacc_module = tf.load_op_library(self.c.custom_lib_path)
-        self.sacc_result = self.sacc_module.sacc(self.test_input)
+        self.sacc_result = self.sacc_module.sacc([self.test_input])
         self.sesstion = tf.Session()    
         self.total_time = 0
 
