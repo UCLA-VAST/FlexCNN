@@ -73,10 +73,16 @@ Setting up the environment variable `XILINX_XRT` correspondingly (just source th
 
 ````python
 import tensorflow as tf
-sacc_module = tf.load_op_library('/path/to/this/lib/libsacc.so')
-with tf.Session(''):
-  sacc_module.sacc([[1, 2], [3, 4]]).eval()
 
+class SaccTest(tf.test.TestCase):
+  def SaccTest(self):
+    sacc_module = tf.load_op_library('/path/to/this/lib/libsacc.so')
+    with tf.Session(''):
+      result = sacc_module.sacc([[1, 2], [3, 4]])
+      result.eval()
+
+if __name__ == "__main__":
+  tf.test.main()
 ````
 
 
