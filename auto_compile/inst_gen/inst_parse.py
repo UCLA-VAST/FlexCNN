@@ -590,8 +590,8 @@ def run(f_tile, f_model, f_input_config, s_output_tensors):
 
     line_id = line_id + 1
     
-  for layer in layer_configs:
-    print(layer, ":", layer_configs[layer])
+ # for layer in layer_configs:
+  #  print(layer, ":", layer_configs[layer])
 
   # calculate the region size
 #  region0_layers = ["Conv2d_0", "Conv2d_1", "expand1_1st", "expand1_2nd", "expand2_1st", "expand2_2nd", "expand3_1st", \
