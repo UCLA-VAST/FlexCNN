@@ -20,7 +20,7 @@ def run(f_tile, f_model, f_input_config, s_output_tensors):
   with open(f_input_config, "r") as f:
     input_config = json.loads(f.read())
     
-  output_tenosrs_list = s_output_tensors.split(', ')
+  output_tensors_list = s_output_tensors.split(', ')
 
   # Please change the paramters below before running this script
   """
@@ -111,6 +111,7 @@ def run(f_tile, f_model, f_input_config, s_output_tensors):
   expansion_factor = 1
 
   in_out_offset = 0
+  line_id = 1
   
   # Pass 0: To learn about concat layers
   concat_layers_inp = {}
@@ -180,9 +181,9 @@ def run(f_tile, f_model, f_input_config, s_output_tensors):
         layers = []
         tensors = (content[0].strip('][')).split(', ')
         layer_name = (tensors[0]).strip("'")
-        prev_layer_name = (tensors[0]).strip("'")
+        prev_layer_name = (tensors[1]).strip("'")
         if prev_layer_name in next_layers:
-          layers = next_layers[content[i]]
+          layers = next_layers[prev_layer_name]
         layers.append(layer_name)
         next_layers[prev_layer_name] = layers
         
@@ -200,7 +201,7 @@ def run(f_tile, f_model, f_input_config, s_output_tensors):
     content = line.split(";")
     if content[1] == "Conv2D" or content[1] == "separable_conv":
       if layer_cnt == 1:
-	      in_out_offset = in_num_hw * in_h_hw * in_w_hw
+        in_out_offset = in_num_hw * in_h_hw * in_w_hw
         macros.write("#define IN_OUT_OFFSET " + str(int(in_out_offset)) + '\n')
 
       relu_en = 0
@@ -357,19 +358,20 @@ def run(f_tile, f_model, f_input_config, s_output_tensors):
         out_h = in_h * 2
         out_w = in_w * 2
   
+      cur_filter_s = 1
       if prev_layer_name in concat_layers_list:
-        f_list = [max([layer_config_dict[next])['FILTER'] for next in next_layers[layer]]) for layer in concat_layers_list[prev_layer_name]]
-        cur_filter_s = max(f_list, filter_s)
+        f_list = [max((layer_config_dict[next])['FILTER'] for next in next_layers[layer] if next in layer_config_dict) for layer in concat_layers_list[prev_layer_name] if layer in next_layers]
+        cur_filter_s = max(max(f_list), filter_s)
       else:
         cur_filter_s = filter_s
         
       if prev_layer_name in concat_layers_inp:
-        in_num_list = [(layer_config_dict[layer])['OUT_NUM_HW'] for layer in concat_layers_inp[prev_layer_name]]
+        in_num_list = [(layer_config_dict[layer])['OUT_NUM_HW'] for layer in concat_layers_inp[prev_layer_name] if layer in layer_config_dict]
         in_num = sum(in_num_list)
-        in_h_list = [(layer_config_dict[layer])['OUT_H'] for layer in concat_layers_inp[prev_layer_name]]
-        in_h = max(in_num_list)
-        in_w_list = [(layer_config_dict[layer])['OUT_W'] for layer in concat_layers_inp[prev_layer_name]]
-        in_w = max(in_num_list)
+        in_h_list = [(layer_config_dict[layer])['OUT_H'] for layer in concat_layers_inp[prev_layer_name] if layer in layer_config_dict]
+        in_h = max(in_h_list)
+        in_w_list = [(layer_config_dict[layer])['OUT_W'] for layer in concat_layers_inp[prev_layer_name] if layer in layer_config_dict]
+        in_w = max(in_w_list)
         layer_config = {}
         if prev_layer_name not in layer_config_dict:
           layer_config['OUT_NUM_HW'] = in_num
@@ -377,18 +379,20 @@ def run(f_tile, f_model, f_input_config, s_output_tensors):
           layer_config['OUT_W'] = in_w
           layer_config_dict[prev_layer_name] = layer_config 
         
-      nxt_filter_s = 0
+      nxt_filter_s = 1
+      out_h_t = in_h_t
+      out_w_t = in_w_t
       if layer_name in concat_layers_list:
-        f_list = [max([layer_config_dict[next])['FILTER'] for next in next_layers[layer]]) for layer in concat_layers_list[layer_name]]
-        nxt_filter_s = max(f_list)
-        ht_list = [max([layer_config_dict[next])['HT'] for next in next_layers[layer]]) for layer in concat_layers_list[layer_name]]
-        out_h_t = max(ht_list)
-        wt_list = [max([layer_config_dict[next])['WT'] for next in next_layers[layer]]) for layer in concat_layers_list[layer_name]]
-        out_w_t = max(ht_list)
+        f_list = [max((layer_config_dict[next])['FILTER'] for next in next_layers[layer] if next in layer_config_dict) for layer in concat_layers_list[layer_name] if layer in next_layers]
+        if len(f_list) > 0: nxt_filter_s = max(f_list)
+        ht_list = [max((layer_config_dict[next])['HT'] for next in next_layers[layer] if next in layer_config_dict) for layer in concat_layers_list[layer_name] if layer in next_layers]
+        if len(ht_list) > 0: out_h_t = max(ht_list)
+        wt_list = [max((layer_config_dict[next])['WT'] for next in next_layers[layer] if next in layer_config_dict) for layer in concat_layers_list[layer_name] if layer in next_layers]
+        if len(wt_list) > 0: out_w_t = max(wt_list)
       else:
-        nxt_filter_s = filter_list[layer_cnt + 1]
-        out_h_t = in_h_t_list[layer_cnt + 1]
-        out_w_t = in_w_t_list[layer_cnt + 1]
+        if (layer_cnt + 1) < len(filter_list): nxt_filter_s = filter_list[layer_cnt + 1]
+        if (layer_cnt + 1) < len(in_h_t_list): out_h_t = in_h_t_list[layer_cnt + 1]
+        if (layer_cnt + 1) < len(in_w_t_list): out_w_t = in_w_t_list[layer_cnt + 1]
   
       in_num_hw = int(ceil(float(in_num) / in_num_t) * in_num_t)
       out_num_hw = int(ceil(float(out_num) / out_num_t) * out_num_t)
@@ -408,7 +412,9 @@ def run(f_tile, f_model, f_input_config, s_output_tensors):
       col_il_factor = int(in_w_t / SA_COLS / stride)
       
       if layer_name in concat_layers_list:
-        layer_config = layer_config_dict[layer_name]
+        layer_config = {}
+        if layer_name in layer_config_dict:
+          layer_config = layer_config_dict[layer_name]
         layer_config['OUT_H_HW'] = out_h_hw
         layer_config['OUT_W_HW'] = out_w_hw
         layer_config['OUT_H'] = out_h
@@ -526,6 +532,7 @@ def run(f_tile, f_model, f_input_config, s_output_tensors):
       layer_config['COL_IL_FACTOR'] = col_il_factor
   
       batch_norm_depth = 0
+      conv_1st_en = 0
       if layer_type == "separable_conv":
         depth_conv_en = 1
         depth_norm_en = 1
@@ -582,44 +589,47 @@ def run(f_tile, f_model, f_input_config, s_output_tensors):
     
 
     line_id = line_id + 1
+    
+  for layer in layer_configs:
+    print(layer, ":", layer_configs[layer])
 
   # calculate the region size
-  region0_layers = ["Conv2d_0", "Conv2d_1", "expand1_1st", "expand1_2nd", "expand2_1st", "expand2_2nd", "expand3_1st", \
-                    "expand3_2nd", "expand4_1st", "expand4_2nd", "expand5_1st"]
-  region1_layers = ["expand6_1st", "expand6_2nd", "expand7_1st", "expand7_2nd", "expand8_1st","expand8_2nd","expand9_1st", \
-                    "expand9_2nd", "expand10_1st", "expand10_2nd", "expand11_1st", "expand11_2nd", "expand12_1st", "expand12_2nd"]
-  region2_layers = ["MConv_Stage1_L1_1", "MConv_Stage1_L1_2", "MConv_Stage1_L1_3", "MConv_Stage1_L1_4", \
-                    "MConv_Stage1_L2_1", "MConv_Stage1_L2_2", "MConv_Stage1_L2_3", "MConv_Stage1_L2_4"]
-  region3_layers = ["MConv_Stage2_L1_1", "MConv_Stage2_L1_2", "MConv_Stage2_L1_3", "MConv_Stage2_L1_4", \
-                    "MConv_Stage2_L2_1", "MConv_Stage2_L2_2", "MConv_Stage2_L2_3", "MConv_Stage2_L2_4"]
-  region4_layers = ["MConv_Stage1_L1_5", "MConv_Stage1_L2_5", "expand5_2nd", "expand12_upsample"]
-  region5_layers = ["MConv_Stage1_L1_5", "MConv_Stage1_L2_5"]
-
-  region0_offset = in_out_offset
-  region0_size = 0
-  region1_size = 0
-  region2_size = 0
-  region3_size = 0
-  region4_size = 0
-  region5_size = 0
-
-  for layer_name in region0_layers:
-    region0_size += layer_cout_size_hw[layer_name]
-  region1_offset = region0_offset + region0_size
-  for layer_name in region1_layers:
-    region1_size += layer_cout_size_hw[layer_name]
-  region2_offset = region1_offset + region1_size
-  for layer_name in region2_layers:
-    region2_size += layer_cout_size_hw[layer_name]
-  region3_offset = region2_offset + region2_size
-  for layer_name in region3_layers:
-    region3_size += layer_cout_size_hw[layer_name]
-  region4_offset = region3_offset + region3_size
-  for layer_name in region4_layers:
-    region4_size += layer_cout_size_hw[layer_name]
-  region5_offset = region4_offset + region4_size
-  for layer_name in region5_layers:
-    region5_size += layer_cout_size_hw[layer_name]
+#  region0_layers = ["Conv2d_0", "Conv2d_1", "expand1_1st", "expand1_2nd", "expand2_1st", "expand2_2nd", "expand3_1st", \
+#                    "expand3_2nd", "expand4_1st", "expand4_2nd", "expand5_1st"]
+#  region1_layers = ["expand6_1st", "expand6_2nd", "expand7_1st", "expand7_2nd", "expand8_1st","expand8_2nd","expand9_1st", \
+#                    "expand9_2nd", "expand10_1st", "expand10_2nd", "expand11_1st", "expand11_2nd", "expand12_1st", "expand12_2nd"]
+#  region2_layers = ["MConv_Stage1_L1_1", "MConv_Stage1_L1_2", "MConv_Stage1_L1_3", "MConv_Stage1_L1_4", \
+#                    "MConv_Stage1_L2_1", "MConv_Stage1_L2_2", "MConv_Stage1_L2_3", "MConv_Stage1_L2_4"]
+#  region3_layers = ["MConv_Stage2_L1_1", "MConv_Stage2_L1_2", "MConv_Stage2_L1_3", "MConv_Stage2_L1_4", \
+#                    "MConv_Stage2_L2_1", "MConv_Stage2_L2_2", "MConv_Stage2_L2_3", "MConv_Stage2_L2_4"]
+#  region4_layers = ["MConv_Stage1_L1_5", "MConv_Stage1_L2_5", "expand5_2nd", "expand12_upsample"]
+#  region5_layers = ["MConv_Stage1_L1_5", "MConv_Stage1_L2_5"]
+#
+#  region0_offset = in_out_offset
+#  region0_size = 0
+#  region1_size = 0
+#  region2_size = 0
+#  region3_size = 0
+#  region4_size = 0
+#  region5_size = 0
+#
+#  for layer_name in region0_layers:
+#    region0_size += layer_cout_size_hw[layer_name]
+#  region1_offset = region0_offset + region0_size
+#  for layer_name in region1_layers:
+#    region1_size += layer_cout_size_hw[layer_name]
+#  region2_offset = region1_offset + region1_size
+#  for layer_name in region2_layers:
+#    region2_size += layer_cout_size_hw[layer_name]
+#  region3_offset = region2_offset + region2_size
+#  for layer_name in region3_layers:
+#    region3_size += layer_cout_size_hw[layer_name]
+#  region4_offset = region3_offset + region3_size
+#  for layer_name in region4_layers:
+#    region4_size += layer_cout_size_hw[layer_name]
+#  region5_offset = region4_offset + region4_size
+#  for layer_name in region5_layers:
+#    region5_size += layer_cout_size_hw[layer_name]
 #  region4_size += layer_cout_size_hw["MConv_Stage1_L1_5"]
 #  region4_size += layer_cout_size_hw["MConv_Stage1_L2_5"]
 #  region4_size += layer_cout_size_hw["Conv2d_3_pool"]
