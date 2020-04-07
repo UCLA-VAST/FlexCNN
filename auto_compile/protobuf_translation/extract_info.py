@@ -176,7 +176,6 @@ class PBPredictor:
         return candidates if not return_names else self._op_names(candidates)
     
     def topo_sorted_ops(self, return_names=False, filters=None, remove_const_ops=True):
-        from toposort import toposort_flatten
         ops = self.ops
         filters = filters or []
         if remove_const_ops: filters.append(lambda op: op.type != 'Const')
@@ -348,7 +347,7 @@ if __name__ == "__main__":
   parser = argparse.ArgumentParser(description='Data reorganization.')
 
   parser.add_argument('-p', '--pbtxt', metavar='PBTXT', default='./protobuf.pbtxt', help='path to protobuf text file', dest='pbtxt_path')
-  parser.add_argument('-m', '--model', metavar='MODEL', default='./network.model', help='output file showing model description', dest='model')
+  parser.add_argument('-m', '--model', metavar='MODEL', default='./network.model', help='model description', dest='model')
   parser.add_argument('-i', '--input-config', metavar='INPUT_CONFIG', default='./input.json', help='input configuration', dest='input_config')
   parser.add_argument('-g', '--graph_name', metavar='GRAPH_NAME', default='', help='graph name', dest='graph_name')
   parser.add_argument('-n', '--input_name', metavar='INPUT_NAME', default='image', help='input tensor name', dest='input_name')
