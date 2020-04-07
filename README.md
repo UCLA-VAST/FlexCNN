@@ -131,7 +131,7 @@ Inst1: in_num     | out_num       | in_h        | in_w        | out_h    | out_w
 Inst2: cin_offset | weight_offset | bias_offset | cout_offset | filter_s1, filter_s2 | stride
 Inst3: layer_en: conv_1st_en, depth_conv_en, conv_en, relu_en, relu6_en, pool_en, up_sample_en, bias_en, inter_load_en, inter_write_en, batch_norm_en_conv, load_prev_cin, batch_norm_en_depth | prev_cin_offset | in_num_t, out_num_t | in_h_t | in_w_t | nxt_layer_batch
 Inst4: task_num1 | task_num2 | local_accum_num | local_reg_num | row_il_factor | col_il_factor
-````C
+````
 
 
 ### **Build the HLS kernel**
