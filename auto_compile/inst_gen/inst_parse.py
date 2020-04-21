@@ -1,6 +1,7 @@
 from math import ceil
 import json
 import argparse
+from collections import OrderedDict
 
 # Instruction Layout:
 # inst0: in_num_hw | out_num_hw | in_h_hw | in_w_hw | out_h_hw | out_w_hw
@@ -55,7 +56,6 @@ def run(f_tile, f_model, f_input_config, s_output_tensors):
   macros.write("#define K_T " + str(K_T) + '\n')
   macros.write("#define K_T_S " + str(5) + '\n') # kernel size for smoother
 
-  #model = open("./small.model", "r")
   insts = open("./network.insts", "w")
   weight_load = open("./weight_offset.dat", "w")
   bias_load = open("./bias_offset.dat", "w")
@@ -149,7 +149,7 @@ def run(f_tile, f_model, f_input_config, s_output_tensors):
     line = lines[line_id].strip('\n')
     content = line.split(";")
     if len(content) > 1:
-      if content[1] == 'Conv2D' or content[1] == 'separable_conv':
+      if content[1] != 'ConcatV2':
         layer_config = {}
         filter_s = int(content[5])
         filter_list.append(filter_s)
@@ -296,7 +296,7 @@ def run(f_tile, f_model, f_input_config, s_output_tensors):
       
 
   max_layer_batch = 1
-  layer_configs = {}
+  layer_configs = OrderedDict()
 
   #for line_id in range(0,len(lines)):
   line_id = 1
@@ -512,10 +512,10 @@ def run(f_tile, f_model, f_input_config, s_output_tensors):
       if layer_type == "separable_conv":
         layer_config['FILTER_S1'] = filter_s
         layer_config['FILTER_S2'] = 1
-      elif layer_type == "convb":
+      elif layer_type == "Conv2D":
         layer_config['FILTER_S1'] = 1
         layer_config['FILTER_S2'] = filter_s
-      elif layer_type == "max_pool":
+      else:
         layer_config['FILTER_S1'] = 1
         layer_config['FILTER_S2'] = 1
       layer_config['STRIDE'] = stride
@@ -590,539 +590,335 @@ def run(f_tile, f_model, f_input_config, s_output_tensors):
 
     line_id = line_id + 1
     
- # for layer in layer_configs:
-  #  print(layer, ":", layer_configs[layer])
+  #for layer in layer_configs:
+   # print(layer, ":", layer_configs[layer])
+    
+  regions = OrderedDict()
+  regions_normal = OrderedDict()
+  regions_concat = OrderedDict()
+  regions_concat_reorg = OrderedDict()
+  region_id_normal = 0
+  region_id_concat = 0
+  prev_layer = None
+  tmp_concat_layers = []
+  ind = 0
+  for layer in layer_configs:
+    if layer not in concat_layers_list: 
+      region_layers = []
+      if regions_normal.get(region_id_normal) != None:
+        region_layers = regions_normal[region_id_normal]
+      region_layers.append(layer)
+      regions_normal[region_id_normal] = region_layers
+    else:
+      if prev_layer not in concat_layers_list:
+        region_id_normal += 1
+      if layer not in tmp_concat_layers:
+        tmp_concat_layers.append(layer)
+        cnct_out = (concat_layers_list[layer])[0]
+        region_layers = []
+        for inp in concat_layers_inp[cnct_out]:
+          if inp not in tmp_concat_layers:
+            tmp_concat_layers.append(inp)
+          if inp in concat_layers_inp:
+            for inp2 in concat_layers_inp[inp]:
+              if inp2 not in tmp_concat_layers:
+                tmp_concat_layers.append(inp2)
+              region_layers.append(inp2)
+          else:
+           region_layers.append(inp)
+        regions_concat[region_id_concat] = region_layers
+        region_id_concat += 1
+    prev_layer = layer
+  
+  round_robin_id = 0
+  id_concat = region_id_concat
+  region_id_concat = 0
+  add_both_round_robin = False
+  mapped_layers = {}
+  round_robin_ind = [0,0]
+  first_layer_region = {}
+  for c_id, c_list in regions_concat.items():
+    add = True
+    for c2_id, c2_list in regions_concat.items():
+      if c2_id > c_id:
+        if set(c_list).issubset(set(c2_list)): # if the layers are already added, skip them
+          add = False
+          break
+    
+    if add:
+      for c2_id, c2_list in regions_concat_reorg.items():
+        if set(c_list) & set(c2_list): # if the lists have tensors in common, merge them
+          if len(c_list) != len(c2_list):
+            print("******************************")
+            print("Error! This type of concatenation is not supported. Add your concatenation behavior to the instruction generator.")
+            print("Checkout the paper for the supported concatenation behavior. The supported way is either the concat layers don't have intersection or concat the same number of layers")
+            print("Error occured at", c_list, "and", c2_list)
+            print("******************************")
+          else:
+            round_robin_id = (round_robin_id + 1) % 2
+            if not add_both_round_robin and round_robin_id == 1:
+              round_robin_ind[0] = region_id_concat - 1
+              common = [x for x in c_list if x in c2_list]
+              for l in c_list:
+                if l not in common:
+                  first_layer_region[l] = common[0]
+              non_common = [x for x in c_list if x not in c2_list]
+              regions_concat_reorg[region_id_concat] = non_common
+              round_robin_ind[1] = region_id_concat
+              region_id_concat += 1
+              add_both_round_robin = True
+             
+            layers = regions_concat_reorg[round_robin_ind[round_robin_id]]
+            non_common1 = [x for x in c_list if x not in layers]
+            non_common1 = [x for x in non_common1 if x not in regions_concat_reorg[round_robin_ind[0]]]
+            non_common2 = [x for x in layers if x not in c_list]
+            
+            if non_common2 != []:
+              for ind, layer_name in enumerate(non_common1):
+                if layer_cout_size_hw[layer_name] == layer_cout_size_hw[non_common2[ind]]:
+                  mapped_layers[layer_name] = non_common2[ind]
+                else: 
+                  print("******************************")
+                  print("Error! This type of concatenation is not supported. Add your concatenation behavior to the instruction generator.")
+                  print("In the current configuration of the round robin format layers should have the same size. For more info checkout the paper.")
+                  print("Error occured at", layer_name, "and", layers[ind])
+                  print("******************************")
+                  
+              
+            add = False
+            
+            break
+            
+    if add and c_id == len(regions_concat)-1:
+      layers = regions_concat_reorg[round_robin_ind[1]]
+      non_common1 = [x for x in c_list if x not in layers]
+      non_common1 = [x for x in non_common1 if x not in regions_concat_reorg[round_robin_ind[0]]]
+      non_common2 = [x for x in layers if x not in c_list]
+      
+      if non_common2 != []:
+        for ind, layer_name in enumerate(non_common1):
+          if layer_cout_size_hw[layer_name] <= layer_cout_size_hw[non_common2[ind]]:
+            mapped_layers[layer_name] = non_common2[ind]
+          
+        if len(non_common2) > len(non_common1):
+          new_region = [non_common2[i] for i in range(len(non_common1), len(non_common2))]
+          regions_concat_reorg[region_id_concat] = new_region
+          region_id_concat += 1
+            
+      add = False
+      
+    if add:
+      regions_concat_reorg[region_id_concat] = c_list
+      region_id_concat += 1
+          
+        
+    
+#  for r in regions_concat_reorg:
+#    print(r, ":", regions_concat_reorg[r]) 
+#    
+#  for i, r in mapped_layers.items():
+#    print(i, r)
+  
+  ind_region = 0 
+  for ind in regions_normal:
+    regions[ind_region] = regions_normal[ind]
+    ind_region += 1
+  
+  for ind in regions_concat_reorg:
+    regions[ind_region] = regions_concat_reorg[ind]
+    ind_region += 1
 
-  # calculate the region size
-#  region0_layers = ["Conv2d_0", "Conv2d_1", "expand1_1st", "expand1_2nd", "expand2_1st", "expand2_2nd", "expand3_1st", \
-#                    "expand3_2nd", "expand4_1st", "expand4_2nd", "expand5_1st"]
-#  region1_layers = ["expand6_1st", "expand6_2nd", "expand7_1st", "expand7_2nd", "expand8_1st","expand8_2nd","expand9_1st", \
-#                    "expand9_2nd", "expand10_1st", "expand10_2nd", "expand11_1st", "expand11_2nd", "expand12_1st", "expand12_2nd"]
-#  region2_layers = ["MConv_Stage1_L1_1", "MConv_Stage1_L1_2", "MConv_Stage1_L1_3", "MConv_Stage1_L1_4", \
-#                    "MConv_Stage1_L2_1", "MConv_Stage1_L2_2", "MConv_Stage1_L2_3", "MConv_Stage1_L2_4"]
-#  region3_layers = ["MConv_Stage2_L1_1", "MConv_Stage2_L1_2", "MConv_Stage2_L1_3", "MConv_Stage2_L1_4", \
-#                    "MConv_Stage2_L2_1", "MConv_Stage2_L2_2", "MConv_Stage2_L2_3", "MConv_Stage2_L2_4"]
-#  region4_layers = ["MConv_Stage1_L1_5", "MConv_Stage1_L2_5", "expand5_2nd", "expand12_upsample"]
-#  region5_layers = ["MConv_Stage1_L1_5", "MConv_Stage1_L2_5"]
-#
-#  region0_offset = in_out_offset
-#  region0_size = 0
-#  region1_size = 0
-#  region2_size = 0
-#  region3_size = 0
-#  region4_size = 0
-#  region5_size = 0
-#
-#  for layer_name in region0_layers:
-#    region0_size += layer_cout_size_hw[layer_name]
-#  region1_offset = region0_offset + region0_size
-#  for layer_name in region1_layers:
-#    region1_size += layer_cout_size_hw[layer_name]
-#  region2_offset = region1_offset + region1_size
-#  for layer_name in region2_layers:
-#    region2_size += layer_cout_size_hw[layer_name]
-#  region3_offset = region2_offset + region2_size
-#  for layer_name in region3_layers:
-#    region3_size += layer_cout_size_hw[layer_name]
-#  region4_offset = region3_offset + region3_size
-#  for layer_name in region4_layers:
-#    region4_size += layer_cout_size_hw[layer_name]
-#  region5_offset = region4_offset + region4_size
-#  for layer_name in region5_layers:
-#    region5_size += layer_cout_size_hw[layer_name]
-#  region4_size += layer_cout_size_hw["MConv_Stage1_L1_5"]
-#  region4_size += layer_cout_size_hw["MConv_Stage1_L2_5"]
-#  region4_size += layer_cout_size_hw["Conv2d_3_pool"]
-#  region4_size += layer_cout_size_hw["Conv2d_7"]
-#  region4_size += layer_cout_size_hw["Conv2d_11"]
+#  for r in regions:
+#    print(r, ":", regions[r])
 
-#  layer_name2 = 'MConv_Stage2_L1_5_4'
-#  last_layer_size_diff = (layer_configs[layer_name2]['OUT_NUM_HW'] * layer_configs[layer_name2]['OUT_H_HW'] * layer_configs[layer_name2]['OUT_W_HW']) - (layer_configs[layer_name2]['OUT_NUM_HW'] * layer_configs[layer_name2]['OUT_H_HW'] * layer_configs[layer_name2]['OUT_W_HW'] / 16)
-#
-#  cin_size = region5_offset + region5_size + 2 * last_layer_size_diff
-#  weight_size = weight_offset
-#  bias_size = bias_offset
-#
-#  macros.write("#define CIN_SIZE " + str(int(cin_size)) + '\n')
-#  macros.write("#define WEIGHT_SIZE " + str(int(weight_size)) + '\n')
-#  macros.write("#define BIAS_SIZE " + str(int(bias_size)) + '\n')
-#
-#  # Pass3: To generate offsets
-#  layer_output_size = []
-#  layer_output_size_hw = []
-#
-#  # reinitialize all parameters
-#  line_id = 1
-#  cin_offset = 0
-#  cout_offset = 0
-#  weight_offset = 0
-#  bias_offset = 0
-#  prev_cin_offset = 0
-#
-#  vgg_layer_cnt = 0
-#  mb_layer_cnt = 0
-#  stage1_layer_cnt = 0
-#  stage1_iter_cnt = 0
-#  stage2_layer_cnt = 0
-#  stage2_iter_cnt = 0
-#  stage1_channel_cnt = 0
-#  stage2_channel_cnt = 0
-#
-#  in_num_hw = 0
-#  out_num_hw = 0
-#  in_h_hw = 0
-#  in_w_hw = 0
-#  out_h_hw = 0
-#  out_w_hw = 0
-#  filter_s = 0
-#
-#  in_num = network_in_num
-#  out_num = network_in_num
-#  in_h = network_in_h
-#  in_w = network_in_w
-#  out_h = network_in_h
-#  out_w = network_in_w
-#
-#  prev_cin_offset = 0
-#  while line_id < len(lines):
-#    line = lines[line_id].strip('\n')
-#    content = line.split(",")
-#    if current_model == "VGG":
-#      layer_name = content[0]
-#      nxt_filter_s = filter_list[vgg_layer_cnt + 1]
-#      if layer_name == 'Conv2d_1':
-#        nxt_filter_s = 1
-#      prev_cin_offset = cin_offset
-#
-#      shifted_cout_offset = cout_offset + layer_configs[layer_name]['OUT_NUM_T'] * layer_configs[layer_name]['OUT_W_HW'] * int(nxt_filter_s / 2) + layer_configs[layer_name]['OUT_NUM_T'] * int(nxt_filter_s / 2) + in_out_offset
-##      if layer_name == "Conv2d_7":
-##        print(shifted_cout_offset)
-#
-#      layer_configs[layer_name]['SHIFTED_COUT_OFFSET'] = shifted_cout_offset
-#      layer_configs[layer_name]['CIN_OFFSET'] = cin_offset
-#      layer_configs[layer_name]['WEIGHT_OFFSET'] = weight_offset
-#      layer_configs[layer_name]['BIAS_OFFSET'] = bias_offset
-#      layer_configs[layer_name]['COUT_OFFSET'] = cout_offset
-#      layer_configs[layer_name]['PREV_CIN_OFFSET'] = prev_cin_offset
-#
-#      cin_offset += layer_cin_size_hw[layer_name]
-#      weight_offset += layer_weight_size_hw[layer_name]
-#      bias_offset += layer_bias_size_hw[layer_name]
-#      cout_offset += layer_cout_size_hw[layer_name]
-#
-#      vgg_layer_cnt = vgg_layer_cnt + 1
-#  	  # store the start line number of stage 1
-#      if vgg_layer_cnt == VGG_LAYERS:
-#        current_model = "MobileNetV2"
-#        stage1_line_id = line_id + 1
-#      line_id = line_id + 1
-#      
-#    elif current_model == "MobileNetV2":
-#      layer_name_orig = content[0]
-#      if content[1] == "upsample":
-#        layer_name = layer_name_orig
-#      else:
-#        layer_name = layer_name_orig + '_1st'
-#      if layer_name == "expand12_upsample":
-#        nxt_filter_s = filter_list[VGG_LAYERS + MobileNetV2_LAYERS]
-#      else:
-#        nxt_filter_s = filter_list[mb_layer_cnt + 1]
-#        
-#      if content[0] == 'expand6':
-#        cur_filter_s = filter_list[VGG_LAYERS + MobileNetV2_LAYERS]
-#      else:
-#        cur_filter_s = 1
-#
-#      if layer_name == "expand5_2nd":
-##        print(region4_offset, layer_cout_size_hw['MConv_Stage1_L1_5'], layer_cout_size_hw['MConv_Stage1_L2_5'], layer_cout_size_hw['Conv2d_3_pool'])
-#        cout_offset = region4_offset + layer_cout_size_hw['MConv_Stage1_L1_5'] + layer_cout_size_hw['MConv_Stage1_L2_5'] - in_out_offset
-##        print(cout_offset)
-#      if layer_name == "expand6_1st":
-#        #cin_offset = region4_offset + layer_cout_size_hw['MConv_Stage1_L1_5'] + layer_cout_size_hw['MConv_Stage1_L2_5']
-#        cin_offset = shifted_cout_offset
-#        cout_offset = region1_offset - in_out_offset
-#      if layer_name == "expand6_2nd":
-#        cin_offset = region1_offset
-#      if layer_name == "expand12_upsample":
-#        cin_offset = shifted_cout_offset
-#        cout_offset = region4_offset + layer_cout_size_hw['MConv_Stage1_L1_5'] + layer_cout_size_hw['MConv_Stage1_L2_5'] + layer_cout_size_hw['expand5_2nd'] - in_out_offset
-#
-#      # Debug
-##      if layer_name == "Conv2d_2":
-##        print(cout_offset, layer_configs[layer_name]['OUT_W_HW'], nxt_filter_s)
-#
-#      if content[1] != "upsample":
-#        shifted_cout_offset = cout_offset + layer_configs[layer_name]['OUT_NUM_T'] * layer_configs[layer_name]['OUT_W_HW'] * int(nxt_filter_s / 2) + layer_configs[layer_name]['OUT_NUM_T'] * int(nxt_filter_s / 2) + in_out_offset
-#        #print(layer_name)
-#        #print(cout_offset,layer_configs[layer_name]['OUT_NUM_T'], layer_configs[layer_name]['OUT_W_HW'], int(nxt_filter_s / 2),in_out_offset)
-#  #      if layer_name == "Conv2d_7":
-#  #        print(shifted_cout_offset)
-#  
-#        layer_configs[layer_name]['SHIFTED_COUT_OFFSET'] = shifted_cout_offset
-#        layer_configs[layer_name]['CIN_OFFSET'] = cin_offset
-#        layer_configs[layer_name]['WEIGHT_OFFSET'] = weight_offset
-#        layer_configs[layer_name]['BIAS_OFFSET'] = bias_offset
-#        layer_configs[layer_name]['COUT_OFFSET'] = cout_offset
-#        
-#        layer_configs[layer_name]['PREV_CIN_OFFSET'] = prev_cin_offset
-#        
-#        prev_cin_offset = cin_offset
-#  
-#        cin_offset += layer_cin_size_hw[layer_name]
-#        weight_offset += layer_weight_size_hw[layer_name]
-#        bias_offset += layer_bias_size_hw[layer_name]
-#        cout_offset += layer_cout_size_hw[layer_name]
-#      
-#      ############ 2nd layer of mobilenetV2  ################
-#      if content[1] == "upsample":
-#        layer_name = layer_name_orig
-#      else:
-#        layer_name = layer_name_orig + '_2nd'
-#      if layer_name == "expand5_2nd" or layer_name == "expand12_upsample":
-#        nxt_filter_s = filter_list[VGG_LAYERS + MobileNetV2_LAYERS]
-#      else:
-#        nxt_filter_s = 1
-#
-#      if layer_name == "expand5_2nd":
-##        print(region4_offset, layer_cout_size_hw['MConv_Stage1_L1_5'], layer_cout_size_hw['MConv_Stage1_L2_5'], layer_cout_size_hw['Conv2d_3_pool'])
-#        cout_offset = region4_offset + layer_cout_size_hw['MConv_Stage1_L1_5'] + layer_cout_size_hw['MConv_Stage1_L2_5'] - in_out_offset
-##        print(cout_offset)
-#      if layer_name == "expand6_1st":
-#        cin_offset = region4_offset + layer_cout_size_hw['MConv_Stage1_L1_5'] + layer_cout_size_hw['MConv_Stage1_L2_5']
-#        cout_offset = region1_offset - in_out_offset
-#      if layer_name == "expand6_2nd":
-#        cin_offset = region1_offset
-#      if layer_name == "expand12_upsample":
-#        cout_offset = region4_offset + layer_cout_size_hw['MConv_Stage1_L1_5'] + layer_cout_size_hw['MConv_Stage1_L2_5'] + layer_cout_size_hw['expand5_2nd'] - in_out_offset
-#
-#      # Debug
-##      if layer_name == "Conv2d_2":
-##        print(cout_offset, layer_configs[layer_name]['OUT_W_HW'], nxt_filter_s)
-#
-#      shifted_cout_offset = cout_offset + layer_configs[layer_name]['OUT_NUM_T'] * layer_configs[layer_name]['OUT_W_HW'] * int(nxt_filter_s / 2) + layer_configs[layer_name]['OUT_NUM_T'] * int(nxt_filter_s / 2) + in_out_offset
-##      if layer_name == "Conv2d_7":
-##        print(shifted_cout_offset)
-#
-#      layer_configs[layer_name]['SHIFTED_COUT_OFFSET'] = shifted_cout_offset
-#      layer_configs[layer_name]['CIN_OFFSET'] = cin_offset
-#      layer_configs[layer_name]['WEIGHT_OFFSET'] = weight_offset
-#      layer_configs[layer_name]['BIAS_OFFSET'] = bias_offset
-#      layer_configs[layer_name]['COUT_OFFSET'] = cout_offset
-#      
-#      layer_configs[layer_name]['PREV_CIN_OFFSET'] = prev_cin_offset
-#      
-#      prev_cin_offset = cin_offset
-#
-#      cin_offset += layer_cin_size_hw[layer_name]
-#      weight_offset += layer_weight_size_hw[layer_name]
-#      bias_offset += layer_bias_size_hw[layer_name]
-#      cout_offset += layer_cout_size_hw[layer_name]
-#
-#      mb_layer_cnt = mb_layer_cnt + 1
-#  	  # store the start line number of stage 1
-#      if mb_layer_cnt == MobileNetV2_LAYERS:
-#        current_model = "STAGE1"
-#        stage1_line_id = line_id + 1
-#      line_id = line_id + 1
-#    elif current_model == "STAGE1":
-#      layer_name = content[0]
-#
-#      if layer_name == "MConv_Stage1_L1_5" or layer_name == "MConv_Stage1_L2_5":
-#        nxt_filter_s = filter_list[VGG_LAYERS + MobileNetV2_LAYERS + STAGE1_LAYERS * 2]
-#      else:
-#        nxt_filter_s = filter_list[VGG_LAYERS + MobileNetV2_LAYERS + stage1_layer_cnt + stage1_channel_cnt * STAGE1_LAYERS + 1]
-#
-#      if layer_name == "MConv_Stage1_L1_1":
-#        cin_offset = region4_offset + layer_cout_size_hw['MConv_Stage1_L1_5'] + layer_cout_size_hw['MConv_Stage1_L2_5']
-#        cout_offset = region2_offset - in_out_offset
-#      if layer_name == "MConv_Stage1_L1_2":
-#        cin_offset = region2_offset
-#      if layer_name == "MConv_Stage1_L1_5":
-#        cout_offset = region4_offset - in_out_offset
-#      if layer_name == "MConv_Stage1_L2_1":
-#        cin_offset = region4_offset + layer_cout_size_hw['MConv_Stage1_L1_5'] + layer_cout_size_hw['MConv_Stage1_L2_5']
-#        cout_offset = region2_offset + region2_size / 2 - in_out_offset
-#      if layer_name == "MConv_Stage1_L2_2":
-#        cin_offset = region2_offset + region2_size / 2
-#      if layer_name == "MConv_Stage1_L2_5":
-#        cout_offset = region4_offset + layer_cout_size_hw['MConv_Stage1_L1_5'] - in_out_offset
-#
-#      shifted_cout_offset = cout_offset + layer_configs[layer_name]['OUT_NUM_T'] * layer_configs[layer_name]['OUT_W_HW'] * int(nxt_filter_s / 2) + layer_configs[layer_name]['OUT_NUM_T'] * int(nxt_filter_s / 2) + in_out_offset
-#
-#      layer_configs[layer_name]['SHIFTED_COUT_OFFSET'] = shifted_cout_offset
-#      layer_configs[layer_name]['CIN_OFFSET'] = cin_offset
-#      layer_configs[layer_name]['WEIGHT_OFFSET'] = weight_offset
-#      layer_configs[layer_name]['BIAS_OFFSET'] = bias_offset
-#      layer_configs[layer_name]['COUT_OFFSET'] = cout_offset
-#      layer_configs[layer_name]['PREV_CIN_OFFSET'] = 0
-#
-#
-#      cin_offset += layer_cin_size_hw[layer_name]
-#      weight_offset += layer_weight_size_hw[layer_name]
-#      bias_offset += layer_bias_size_hw[layer_name]
-#      cout_offset += layer_cout_size_hw[layer_name]
-#
-#
-#
-#      stage1_layer_cnt = stage1_layer_cnt + 1
-#      if stage1_layer_cnt == STAGE1_LAYERS:
-#        stage1_layer_cnt = 0
-#        stage1_channel_cnt = stage1_channel_cnt + 1
-#        if stage1_channel_cnt == 2:
-#          stage1_channel_cnt = 0
-#          stage1_iter_cnt = stage1_iter_cnt + 1
-#          if stage1_iter_cnt == STAGE1_ITER:
-#            stage1_iter_cnt = 0
-#            current_model = "STAGE2"
-#            stage2_line_id = line_id + 1
-#      line_id = line_id + 1
-#    elif current_model == "STAGE2":
-#      layer_name = content[0]
-#      layer_name2 = layer_name + '_' + str(stage2_iter_cnt)
-#      if layer_name == "MConv_Stage2_L1_5" or layer_name == "MConv_Stage2_L2_5":
-#        nxt_filter_s = filter_list[VGG_LAYERS + MobileNetV2_LAYERS + STAGE1_LAYERS * 2]
-#      else:
-#        nxt_filter_s = filter_list[VGG_LAYERS + MobileNetV2_LAYERS + STAGE1_LAYERS + stage2_layer_cnt + stage2_channel_cnt * STAGE2_LAYERS + 1]
-#
-#      if stage2_iter_cnt % 2 == 0: # [2,4,6]
-#        if layer_name == "MConv_Stage2_L1_1":
-#          cin_offset = region4_offset
-#          cout_offset = region3_offset - in_out_offset
-#        if layer_name == "MConv_Stage2_L1_2":
-#          cin_offset = region3_offset
-#        if layer_name == "MConv_Stage2_L1_5":
-##          cout_offset = region4_offset - in_out_offset
-#          cout_offset = region5_offset - in_out_offset
-#          if stage2_iter_cnt == STAGE2_ITER - 1:
-#            macros.write("#define STAGE2L_OFFSET " + str(int(cout_offset + in_out_offset)) + '\n')
-#        if layer_name == "MConv_Stage2_L2_1":
-#          cin_offset = region4_offset
-#          cout_offset = region3_offset + region3_size / 2 - in_out_offset
-#        if layer_name == "MConv_Stage2_L2_2":
-#          cin_offset = region3_offset + region3_size / 2
-#        if layer_name == "MConv_Stage2_L2_5":
-##          cout_offset = region4_offset + layer_cout_size_hw['MConv_Stage1_L1_5'] - in_out_offset
-#          if stage2_iter_cnt == 4:
-#            cout_offset = region5_offset + (layer_configs[layer_name2]['OUT_NUM_HW'] * layer_configs[layer_name2]['OUT_H_HW'] * layer_configs[layer_name2]['OUT_W_HW']) - in_out_offset
-#          else:
-#            cout_offset = region5_offset + layer_cout_size_hw['MConv_Stage1_L1_5'] - in_out_offset
-#          if stage2_iter_cnt == STAGE2_ITER - 1:
-#            macros.write("#define STAGE2R_OFFSET " + str(int(cout_offset + in_out_offset)) + '\n')
-#
-#      elif stage2_iter_cnt % 2 == 1: # [3,5]
-#        if layer_name == "MConv_Stage2_L1_1":
-##          cin_offset = region4_offset
-#          cin_offset = region4_offset + layer_cout_size_hw['MConv_Stage1_L1_5'] + layer_cout_size_hw['MConv_Stage1_L2_5']
-#          cout_offset = region3_offset - in_out_offset
-#        if layer_name == "MConv_Stage2_L1_2":
-#          cin_offset = region3_offset
-#        if layer_name == "MConv_Stage2_L1_5":
-#          cout_offset = region4_offset - in_out_offset
-#          if stage2_iter_cnt == STAGE2_ITER - 1:
-#            macros.write("#define STAGE2L_OFFSET " + str(int(cout_offset + in_out_offset)) + '\n')
-#        if layer_name == "MConv_Stage2_L2_1":
-##          cin_offset = region4_offset
-#          cin_offset = region4_offset + layer_cout_size_hw['MConv_Stage1_L1_5'] + layer_cout_size_hw['MConv_Stage1_L2_5']
-#          cout_offset = region3_offset + region3_size / 2 - in_out_offset
-#        if layer_name == "MConv_Stage2_L2_2":
-#          cin_offset = region3_offset + region3_size / 2
-#        if layer_name == "MConv_Stage2_L2_5":
-#          cout_offset = region4_offset + layer_cout_size_hw['MConv_Stage1_L1_5'] - in_out_offset
-#          if stage2_iter_cnt == STAGE2_ITER - 1:
-#            macros.write("#define STAGE2R_OFFSET " + str(int(cout_offset + in_out_offset)) + '\n')
-#
-#      #print(layer_name)
-#      shifted_cout_offset = cout_offset + layer_configs[layer_name2]['OUT_NUM_T'] * layer_configs[layer_name2]['OUT_W_HW'] * int(nxt_filter_s / 2) + layer_configs[layer_name2]['OUT_NUM_T'] * int(nxt_filter_s / 2) + in_out_offset
-#
-#
-#      layer_configs[layer_name + '_' + str(stage2_iter_cnt)]['SHIFTED_COUT_OFFSET'] = shifted_cout_offset
-#      layer_configs[layer_name + '_' + str(stage2_iter_cnt)]['CIN_OFFSET'] = cin_offset
-#      layer_configs[layer_name + '_' + str(stage2_iter_cnt)]['WEIGHT_OFFSET'] = weight_offset
-#      layer_configs[layer_name + '_' + str(stage2_iter_cnt)]['BIAS_OFFSET'] = bias_offset
-#      layer_configs[layer_name + '_' + str(stage2_iter_cnt)]['COUT_OFFSET'] = cout_offset
-#      layer_configs[layer_name + '_' + str(stage2_iter_cnt)]['PREV_CIN_OFFSET'] = 0
-#
-#
-#
-#      cin_offset += layer_cin_size_hw[layer_name]
-#      weight_offset += layer_weight_size_hw[layer_name]
-#      bias_offset += layer_bias_size_hw[layer_name]
-#      cout_offset += layer_cout_size_hw[layer_name]
-#
-#      stage2_layer_cnt = stage2_layer_cnt + 1
-#      if stage2_layer_cnt == STAGE2_LAYERS:
-#        stage2_layer_cnt = 0
-#        stage2_channel_cnt = stage2_channel_cnt + 1
-#        if stage2_channel_cnt == 2:
-#          stage2_channel_cnt = 0
-#          stage2_iter_cnt = stage2_iter_cnt + 1
-#          if stage2_iter_cnt == STAGE2_ITER:
-#            stage2_iter_cnt = 0
-#            current_model = "STAGE2"
-#            break
-#          else:
-#            line_id = stage2_line_id - 1
-#      line_id = line_id + 1
-##    line_id = line_id + 1
-#
-#  macros.write("#define MAX_LAYER_BATCH " + str(int(max_layer_batch)) + '\n')
-#  # Pass4: To print out insts
-#  # reinitialize all parameters
-#  line_id = 1
-#  current_model = "VGG"
-#
-#  vgg_layer_cnt = 0
-#  vgg_layer_cnt = 0
-#  stage1_layer_cnt = 0
-#  stage1_iter_cnt = 0
-#  stage2_layer_cnt = 0
-#  stage2_iter_cnt = 0
-#  stage1_channel_cnt = 0
-#  stage2_channel_cnt = 0
-#  mb_layer_cnt = 0
-#
-#  while line_id < len(lines):
-#    line = lines[line_id].strip('\n')
-#    content = line.split(",")
-#    if current_model == "VGG":
-#      layer_name = content[0]
-#
-#      inst0 = [layer_configs[layer_name]['IN_NUM_HW'], layer_configs[layer_name]['OUT_NUM_HW'], layer_configs[layer_name]['IN_H_HW'], layer_configs[layer_name]['IN_W_HW'], layer_configs[layer_name]['OUT_H_HW'], layer_configs[layer_name]['OUT_W_HW']]
-#      inst1 = [layer_configs[layer_name]['IN_NUM'], layer_configs[layer_name]['OUT_NUM'], layer_configs[layer_name]['IN_H'], layer_configs[layer_name]['IN_W'], layer_configs[layer_name]['OUT_H'], layer_configs[layer_name]['OUT_W']]
-#      inst2 = [layer_configs[layer_name]['CIN_OFFSET'], layer_configs[layer_name]['WEIGHT_OFFSET'], layer_configs[layer_name]['BIAS_OFFSET'], layer_configs[layer_name]['SHIFTED_COUT_OFFSET'], layer_configs[layer_name]['FILTER_S1'], layer_configs[layer_name]['FILTER_S2'], layer_configs[layer_name]['STRIDE']]
-#      inst3 = [layer_configs[layer_name]['LAYER_EN'], layer_configs[layer_name]['PREV_CIN_OFFSET'], layer_configs[layer_name]['IN_NUM_T'], layer_configs[layer_name]['OUT_NUM_T'], layer_configs[layer_name]['IN_H_T'], layer_configs[layer_name]['IN_W_T'], layer_configs[layer_name]['NXT_LAYER_BATCH']]
-#      inst4 = [layer_configs[layer_name]['TASK_NUM1'], layer_configs[layer_name]['TASK_NUM2'], layer_configs[layer_name]['LOCAL_ACCUM_NUM'], layer_configs[layer_name]['LOCAL_REG_NUM'], layer_configs[layer_name]['ROW_IL_FACTOR'], layer_configs[layer_name]['COL_IL_FACTOR']]
-#
-#      insts.writelines(" ".join(str(int(e)) for e in inst0) + "\n")
-#      insts.writelines(" ".join(str(int(e)) for e in inst1) + "\n")
-#      insts.writelines(" ".join(str(int(e)) for e in inst2) + "\n")
-#      insts.writelines(" ".join(str(int(e)) for e in inst3) + "\n")
-#      insts.writelines(" ".join(str(int(e)) for e in inst4) + "\n")
-#      insts.writelines("\n")
-#
-#      vgg_layer_cnt = vgg_layer_cnt + 1
-#  	  # store the start line number of stage 1
-#      if vgg_layer_cnt == VGG_LAYERS:
-#        current_model = "MobileNetV2"
-#        stage1_line_id = line_id + 1
-#      line_id = line_id + 1
-#    elif current_model == "MobileNetV2":
-#      layer_name_orig = content[0]
-#      if content[1] == "upsample":
-#        layer_name = layer_name_orig
-#      else:
-#        layer_name = layer_name_orig + '_1st'
-#      inst0 = [layer_configs[layer_name]['IN_NUM_HW'], layer_configs[layer_name]['OUT_NUM_HW'], layer_configs[layer_name]['IN_H_HW'], layer_configs[layer_name]['IN_W_HW'], layer_configs[layer_name]['OUT_H_HW'], layer_configs[layer_name]['OUT_W_HW']]
-#      inst1 = [layer_configs[layer_name]['IN_NUM'], layer_configs[layer_name]['OUT_NUM'], layer_configs[layer_name]['IN_H'], layer_configs[layer_name]['IN_W'], layer_configs[layer_name]['OUT_H'], layer_configs[layer_name]['OUT_W']]
-#      inst2 = [layer_configs[layer_name]['CIN_OFFSET'], layer_configs[layer_name]['WEIGHT_OFFSET'], layer_configs[layer_name]['BIAS_OFFSET'], layer_configs[layer_name]['SHIFTED_COUT_OFFSET'], layer_configs[layer_name]['FILTER_S1'], layer_configs[layer_name]['FILTER_S2'], layer_configs[layer_name]['STRIDE']]
-#      inst3 = [layer_configs[layer_name]['LAYER_EN'], layer_configs[layer_name]['PREV_CIN_OFFSET'], layer_configs[layer_name]['IN_NUM_T'], layer_configs[layer_name]['OUT_NUM_T'], layer_configs[layer_name]['IN_H_T'], layer_configs[layer_name]['IN_W_T'], layer_configs[layer_name]['NXT_LAYER_BATCH']]
-#      inst4 = [layer_configs[layer_name]['TASK_NUM1'], layer_configs[layer_name]['TASK_NUM2'], layer_configs[layer_name]['LOCAL_ACCUM_NUM'], layer_configs[layer_name]['LOCAL_REG_NUM'], layer_configs[layer_name]['ROW_IL_FACTOR'], layer_configs[layer_name]['COL_IL_FACTOR']]
-#
-#      insts.writelines(" ".join(str(int(e)) for e in inst0) + "\n")
-#      insts.writelines(" ".join(str(int(e)) for e in inst1) + "\n")
-#      insts.writelines(" ".join(str(int(e)) for e in inst2) + "\n")
-#      insts.writelines(" ".join(str(int(e)) for e in inst3) + "\n")
-#      insts.writelines(" ".join(str(int(e)) for e in inst4) + "\n")
-#      insts.writelines("\n")
-#      
-#      if content[1] == "MobileNetV2":
-#         layer_name = layer_name_orig + '_2nd'
-#         inst0 = [layer_configs[layer_name]['IN_NUM_HW'], layer_configs[layer_name]['OUT_NUM_HW'], layer_configs[layer_name]['IN_H_HW'], layer_configs[layer_name]['IN_W_HW'], layer_configs[layer_name]['OUT_H_HW'], layer_configs[layer_name]['OUT_W_HW']]
-#         inst1 = [layer_configs[layer_name]['IN_NUM'], layer_configs[layer_name]['OUT_NUM'], layer_configs[layer_name]['IN_H'], layer_configs[layer_name]['IN_W'], layer_configs[layer_name]['OUT_H'], layer_configs[layer_name]['OUT_W']]
-#         inst2 = [layer_configs[layer_name]['CIN_OFFSET'], layer_configs[layer_name]['WEIGHT_OFFSET'], layer_configs[layer_name]['BIAS_OFFSET'], layer_configs[layer_name]['SHIFTED_COUT_OFFSET'], layer_configs[layer_name]['FILTER_S1'], layer_configs[layer_name]['FILTER_S2'], layer_configs[layer_name]['STRIDE']]
-#         inst3 = [layer_configs[layer_name]['LAYER_EN'], layer_configs[layer_name]['PREV_CIN_OFFSET'], layer_configs[layer_name]['IN_NUM_T'], layer_configs[layer_name]['OUT_NUM_T'], layer_configs[layer_name]['IN_H_T'], layer_configs[layer_name]['IN_W_T'], layer_configs[layer_name]['NXT_LAYER_BATCH']]
-#         inst4 = [layer_configs[layer_name]['TASK_NUM1'], layer_configs[layer_name]['TASK_NUM2'], layer_configs[layer_name]['LOCAL_ACCUM_NUM'], layer_configs[layer_name]['LOCAL_REG_NUM'], layer_configs[layer_name]['ROW_IL_FACTOR'], layer_configs[layer_name]['COL_IL_FACTOR']]
-#   
-#         insts.writelines(" ".join(str(int(e)) for e in inst0) + "\n")
-#         insts.writelines(" ".join(str(int(e)) for e in inst1) + "\n")
-#         insts.writelines(" ".join(str(int(e)) for e in inst2) + "\n")
-#         insts.writelines(" ".join(str(int(e)) for e in inst3) + "\n")
-#         insts.writelines(" ".join(str(int(e)) for e in inst4) + "\n")
-#         insts.writelines("\n")
-#
-#      mb_layer_cnt = mb_layer_cnt + 1
-#  	  # store the start line number of stage 1
-#      if mb_layer_cnt == MobileNetV2_LAYERS:
-#        current_model = "STAGE1"
-#        stage1_line_id = line_id + 1
-#      line_id = line_id + 1
-#    elif current_model == "STAGE1":
-#      layer_name = content[0]
-#
-#      inst0 = [layer_configs[layer_name]['IN_NUM_HW'], layer_configs[layer_name]['OUT_NUM_HW'], layer_configs[layer_name]['IN_H_HW'], layer_configs[layer_name]['IN_W_HW'], layer_configs[layer_name]['OUT_H_HW'], layer_configs[layer_name]['OUT_W_HW']]
-#      inst1 = [layer_configs[layer_name]['IN_NUM'], layer_configs[layer_name]['OUT_NUM'], layer_configs[layer_name]['IN_H'], layer_configs[layer_name]['IN_W'], layer_configs[layer_name]['OUT_H'], layer_configs[layer_name]['OUT_W']]
-#      inst2 = [layer_configs[layer_name]['CIN_OFFSET'], layer_configs[layer_name]['WEIGHT_OFFSET'], layer_configs[layer_name]['BIAS_OFFSET'], layer_configs[layer_name]['SHIFTED_COUT_OFFSET'], layer_configs[layer_name]['FILTER_S1'], layer_configs[layer_name]['FILTER_S2'], layer_configs[layer_name]['STRIDE']]
-#      inst3 = [layer_configs[layer_name]['LAYER_EN'], layer_configs[layer_name]['PREV_CIN_OFFSET'], layer_configs[layer_name]['IN_NUM_T'], layer_configs[layer_name]['OUT_NUM_T'], layer_configs[layer_name]['IN_H_T'], layer_configs[layer_name]['IN_W_T'], layer_configs[layer_name]['NXT_LAYER_BATCH']]
-#      inst4 = [layer_configs[layer_name]['TASK_NUM1'], layer_configs[layer_name]['TASK_NUM2'], layer_configs[layer_name]['LOCAL_ACCUM_NUM'], layer_configs[layer_name]['LOCAL_REG_NUM'], layer_configs[layer_name]['ROW_IL_FACTOR'], layer_configs[layer_name]['COL_IL_FACTOR']]
-#
-#      insts.writelines(" ".join(str(int(e)) for e in inst0) + "\n")
-#      insts.writelines(" ".join(str(int(e)) for e in inst1) + "\n")
-#      insts.writelines(" ".join(str(int(e)) for e in inst2) + "\n")
-#      insts.writelines(" ".join(str(int(e)) for e in inst3) + "\n")
-#      insts.writelines(" ".join(str(int(e)) for e in inst4) + "\n")
-#      insts.writelines("\n")
-#
-## Change the execution order of two branches
-#      stage1_layer_cnt = stage1_layer_cnt + 1
-#      if stage1_layer_cnt == STAGE1_LAYERS:
-#        stage1_layer_cnt = 0
-#        stage1_channel_cnt = stage1_channel_cnt + 1
-#        if stage1_channel_cnt == 2:
-#          stage1_channel_cnt = 0
-#          stage1_iter_cnt = stage1_iter_cnt + 1
-#          if stage1_iter_cnt == STAGE1_ITER:
-#            stage1_iter_cnt = 0
-#            stage2_line_id = line_id + 1
-#            current_model = "STAGE2"
-#
-#
-#      line_id = stage1_line_id + stage1_channel_cnt * STAGE1_LAYERS + stage1_layer_cnt + stage1_iter_cnt * STAGE1_LAYERS * 2
-#      if current_model == "STAGE2":
-#        line_id = stage2_line_id
-#
-#    elif current_model == "STAGE2":
-#      layer_name2 = content[0]
-#      layer_name = layer_name2 + '_' + str(stage2_iter_cnt)
-#      #print(layer_name)
-#      
-#      inst0 = [layer_configs[layer_name]['IN_NUM_HW'], layer_configs[layer_name]['OUT_NUM_HW'], layer_configs[layer_name]['IN_H_HW'], layer_configs[layer_name]['IN_W_HW'], layer_configs[layer_name]['OUT_H_HW'], layer_configs[layer_name]['OUT_W_HW']]
-#      inst1 = [layer_configs[layer_name]['IN_NUM'], layer_configs[layer_name]['OUT_NUM'], layer_configs[layer_name]['IN_H'], layer_configs[layer_name]['IN_W'], layer_configs[layer_name]['OUT_H'], layer_configs[layer_name]['OUT_W']]
-#      inst2 = [layer_configs[layer_name]['CIN_OFFSET'], layer_configs[layer_name]['WEIGHT_OFFSET'], layer_configs[layer_name]['BIAS_OFFSET'], layer_configs[layer_name]['SHIFTED_COUT_OFFSET'], layer_configs[layer_name]['FILTER_S1'], layer_configs[layer_name]['FILTER_S2'], layer_configs[layer_name]['STRIDE']]
-#      #print(layer_name)
-#      inst3 = [layer_configs[layer_name]['LAYER_EN'], layer_configs[layer_name]['PREV_CIN_OFFSET'], layer_configs[layer_name]['IN_NUM_T'], layer_configs[layer_name]['OUT_NUM_T'], layer_configs[layer_name]['IN_H_T'], layer_configs[layer_name]['IN_W_T'], layer_configs[layer_name]['NXT_LAYER_BATCH']]
-#      inst4 = [layer_configs[layer_name]['TASK_NUM1'], layer_configs[layer_name]['TASK_NUM2'], layer_configs[layer_name]['LOCAL_ACCUM_NUM'], layer_configs[layer_name]['LOCAL_REG_NUM'], layer_configs[layer_name]['ROW_IL_FACTOR'], layer_configs[layer_name]['COL_IL_FACTOR']]
-#
-#      insts.writelines(" ".join(str(int(e)) for e in inst0) + "\n")
-#      insts.writelines(" ".join(str(int(e)) for e in inst1) + "\n")
-#      insts.writelines(" ".join(str(int(e)) for e in inst2) + "\n")
-#      insts.writelines(" ".join(str(int(e)) for e in inst3) + "\n")
-#      insts.writelines(" ".join(str(int(e)) for e in inst4) + "\n")
-#      insts.writelines("\n")
-#
-## Change the execution order of two branches
-#      stage2_layer_cnt = stage2_layer_cnt + 1
-#      if stage2_layer_cnt == STAGE2_LAYERS:
-#        stage2_layer_cnt = 0
-#        stage2_channel_cnt = stage2_channel_cnt + 1
-#        if stage2_channel_cnt == 2:
-#          stage2_channel_cnt = 0
-#          stage2_iter_cnt = stage2_iter_cnt + 1
-#          if stage2_iter_cnt == STAGE2_ITER:
-#            stage2_iter_cnt = 0
-#            current_model = "STAGE2"
-#            #stage2_line_id = line_id + 1
-#            break
-#
-#
-#      line_id = stage2_line_id + stage2_channel_cnt * STAGE2_LAYERS + stage2_layer_cnt
-#
-#
-#  model.close()
-#  insts.close()
-#
-#  macros.close()
-#  weight_load.close()
-#  bias_load.close()
+  regions_size = []
+  regions_offset = []
+  cin_size = 0
+  offset = 0
+  size = 0
+  for ind, r in regions.items():
+    offset += size
+    size = 0
+    for layer in r:
+      layer_config = layer_configs[layer]
+      layer_config['REGION'] = ind
+      layer_configs[layer] = layer_config
+      size += layer_cout_size_hw[layer]
+      
+    cin_size += size
+    regions_size.append(size)
+    regions_offset.append(offset)
+
+  weight_size = weight_offset
+  bias_size = bias_offset
+
+  macros.write("#define CIN_SIZE " + str(int(cin_size)) + '\n')
+  macros.write("#define WEIGHT_SIZE " + str(int(weight_size)) + '\n')
+  macros.write("#define BIAS_SIZE " + str(int(bias_size)) + '\n')
+
+  # Pass3: To generate offsets
+  layer_output_size = []
+  layer_output_size_hw = []
+
+  # reinitialize all parameters
+  line_id = 1
+  cin_offset = 0
+  cout_offset = 0
+  weight_offset = 0
+  bias_offset = 0
+  prev_cin_offset = 0
+
+  in_num_hw = 0
+  out_num_hw = 0
+  in_h_hw = 0
+  in_w_hw = 0
+  out_h_hw = 0
+  out_w_hw = 0
+  filter_s = 0
+
+  in_num = network_in_num
+  out_num = network_in_num
+  in_h = network_in_h
+  in_w = network_in_w
+  out_h = network_in_h
+  out_w = network_in_w
+
+  prev_cin_offset = 0
+  layer_cnt = 0
+  while line_id < len(lines):
+    line = lines[line_id].strip('\n')
+    content = line.split(";")
+    if len(content) > 2 and content[1] != 'ConcatV2':
+      tensors = (content[0].strip('][')).split(', ')
+      layer_name = (tensors[0]).strip("'")
+      prev_layer_name = (tensors[1]).strip("'")
+      layer_type = content[1]
+      if layer_name in mapped_layers:
+        layer_cnt = layer_cnt + 1
+        line_id = line_id + 1
+        continue
+      cur_filter_s = 1
+      if prev_layer_name in concat_layers_list:
+        f_list = [max((layer_config_dict[next])['FILTER'] for next in next_layers[layer] if next in layer_config_dict and 'FILTER' in layer_config_dict[next]) for layer in concat_layers_list[prev_layer_name] if layer in next_layers]
+        cur_filter_s = max(max(f_list), filter_s)
+      else:
+        cur_filter_s = filter_s
+        
+      if prev_layer_name in concat_layers_inp:
+        in_num_list = [(layer_config_dict[layer])['OUT_NUM_HW'] for layer in concat_layers_inp[prev_layer_name] if layer in layer_config_dict]
+        in_num = sum(in_num_list)
+        in_h_list = [(layer_config_dict[layer])['OUT_H'] for layer in concat_layers_inp[prev_layer_name] if layer in layer_config_dict]
+        in_h = max(in_h_list)
+        in_w_list = [(layer_config_dict[layer])['OUT_W'] for layer in concat_layers_inp[prev_layer_name] if layer in layer_config_dict]
+        in_w = max(in_w_list)
+        layer_config = {}
+        if prev_layer_name not in layer_config_dict:
+          layer_config['OUT_NUM_HW'] = in_num
+          layer_config['OUT_H'] = in_h
+          layer_config['OUT_W'] = in_w
+          layer_config_dict[prev_layer_name] = layer_config 
+        
+      nxt_filter_s = 1
+      out_h_t = in_h_t
+      out_w_t = in_w_t
+      if layer_name in concat_layers_list:
+        f_list = [max((layer_config_dict[next])['FILTER'] for next in next_layers[layer] if next in layer_config_dict and 'FILTER' in layer_config_dict[next]) for layer in concat_layers_list[layer_name] if layer in next_layers]
+        if len(f_list) > 0: nxt_filter_s = max(f_list)
+      else:
+        if (layer_cnt + 1) < len(filter_list): nxt_filter_s = filter_list[layer_cnt + 1]\
+      
+      layer_region = layer_configs[layer_name]['REGION']
+      cout_offset = regions_offset[layer_region]
+      for layer in regions[layer_region]:  
+        if layer == layer_name:
+          break
+        cout_offset += layer_cout_size_hw[layer]
+      
+      shifted_cout_offset = cout_offset + layer_configs[layer_name]['OUT_NUM_T'] * layer_configs[layer_name]['OUT_W_HW'] * int(nxt_filter_s / 2) + layer_configs[layer_name]['OUT_NUM_T'] * int(nxt_filter_s / 2) + in_out_offset
+      
+      
+      if layer_cnt == 0:
+        cin_offset = 0
+      else:
+        if prev_layer_name in layer_configs:
+          if 'SHIFTED_COUT_OFFSET' in layer_configs[prev_layer_name]:
+            cin_offset = layer_configs[prev_layer_name]['SHIFTED_COUT_OFFSET']
+        else: # previous layer is a concatenation layer   
+          layer_name_1st_inp = (concat_layers_inp[prev_layer_name])[0]
+          if layer_name_1st_inp in mapped_layers:
+            layer_name_1st_inp = mapped_layers[layer_name_1st_inp]
+          layer_region = layer_configs[layer_name_1st_inp]['REGION']
+          if layer_name_1st_inp in first_layer_region:
+            first_l = first_layer_region[layer_name_1st_inp]
+            cin_offset = regions_offset[layer_region-1] + layer_configs[first_l]['OUT_NUM_T'] * layer_configs[first_l]['OUT_W_HW'] * int(cur_filter_s / 2) + layer_configs[first_l]['OUT_NUM_T'] * int(cur_filter_s / 2)
+            for layer in regions[layer_region-1]:  
+              if layer == first_l:
+                break
+              cin_offset += layer_cout_size_hw[layer]
+          else:
+            cin_offset = regions_offset[layer_region] + layer_configs[layer_name_1st_inp]['OUT_NUM_T'] * layer_configs[layer_name_1st_inp]['OUT_W_HW'] * int(cur_filter_s / 2) + layer_configs[layer_name_1st_inp]['OUT_NUM_T'] * int(cur_filter_s / 2)
+          for layer in regions[layer_region]:  
+            if layer == layer_name_1st_inp:
+              break
+            cin_offset += layer_cout_size_hw[layer] 
+  
+      layer_configs[layer_name]['SHIFTED_COUT_OFFSET'] = shifted_cout_offset
+      layer_configs[layer_name]['CIN_OFFSET'] = cin_offset
+      layer_configs[layer_name]['WEIGHT_OFFSET'] = weight_offset
+      layer_configs[layer_name]['BIAS_OFFSET'] = bias_offset
+      layer_configs[layer_name]['COUT_OFFSET'] = cout_offset
+      layer_configs[layer_name]['PREV_CIN_OFFSET'] = prev_cin_offset
+  
+      prev_cin_offset = cin_offset
+      #cin_offset += layer_cin_size_hw[layer_name]
+      weight_offset += layer_weight_size_hw[layer_name]
+      bias_offset += layer_bias_size_hw[layer_name]
+      #cout_offset += layer_cout_size_hw[layer_name]
+      
+  
+      layer_cnt = layer_cnt + 1
+    line_id = line_id + 1
+      
+
+
+  macros.write("#define MAX_LAYER_BATCH " + str(int(max_layer_batch)) + '\n')
+  # Pass4: To print out insts
+  # reinitialize all parameters
+  line_id = 1
+
+  while line_id < len(lines):
+    line = lines[line_id].strip('\n')
+    content = line.split(";")
+    if len(content) > 2 and content[1] != 'ConcatV2':
+      tensors = (content[0].strip('][')).split(', ')
+      layer_name = (tensors[0]).strip("'")
+      prev_layer_name = (tensors[1]).strip("'")
+      
+      if layer_name in mapped_layers:
+        layer_name = mapped_layers[layer_name]
+      
+      inst0 = [layer_configs[layer_name]['IN_NUM_HW'], layer_configs[layer_name]['OUT_NUM_HW'], layer_configs[layer_name]['IN_H_HW'], layer_configs[layer_name]['IN_W_HW'], layer_configs[layer_name]['OUT_H_HW'], layer_configs[layer_name]['OUT_W_HW']]
+      inst1 = [layer_configs[layer_name]['IN_NUM'], layer_configs[layer_name]['OUT_NUM'], layer_configs[layer_name]['IN_H'], layer_configs[layer_name]['IN_W'], layer_configs[layer_name]['OUT_H'], layer_configs[layer_name]['OUT_W']]
+      inst2 = [layer_configs[layer_name]['CIN_OFFSET'], layer_configs[layer_name]['WEIGHT_OFFSET'], layer_configs[layer_name]['BIAS_OFFSET'], layer_configs[layer_name]['SHIFTED_COUT_OFFSET'], layer_configs[layer_name]['FILTER_S1'], layer_configs[layer_name]['FILTER_S2'], layer_configs[layer_name]['STRIDE']]
+      inst3 = [layer_configs[layer_name]['LAYER_EN'], layer_configs[layer_name]['PREV_CIN_OFFSET'], layer_configs[layer_name]['IN_NUM_T'], layer_configs[layer_name]['OUT_NUM_T'], layer_configs[layer_name]['IN_H_T'], layer_configs[layer_name]['IN_W_T'], layer_configs[layer_name]['NXT_LAYER_BATCH']]
+      inst4 = [layer_configs[layer_name]['TASK_NUM1'], layer_configs[layer_name]['TASK_NUM2'], layer_configs[layer_name]['LOCAL_ACCUM_NUM'], layer_configs[layer_name]['LOCAL_REG_NUM'], layer_configs[layer_name]['ROW_IL_FACTOR'], layer_configs[layer_name]['COL_IL_FACTOR']]
+  
+      insts.writelines(" ".join(str(int(e)) for e in inst0) + "\n")
+      insts.writelines(" ".join(str(int(e)) for e in inst1) + "\n")
+      insts.writelines(" ".join(str(int(e)) for e in inst2) + "\n")
+      insts.writelines(" ".join(str(int(e)) for e in inst3) + "\n")
+      insts.writelines(" ".join(str(int(e)) for e in inst4) + "\n")
+      insts.writelines("\n")
+
+    line_id = line_id + 1
+    
+
+  model.close()
+  insts.close()
+
+  macros.close()
+  weight_load.close()
+  bias_load.close()
 
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(description='Data reorganization.')
