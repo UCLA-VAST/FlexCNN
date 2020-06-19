@@ -47,6 +47,10 @@ void cin_load_ddr_read(
 		uint global_cin_offset = in_num_iter * LAYER_IN_H_HW * LAYER_IN_W_HW + cin_offset;
 		memcpy((void*)cin_burst_buf, (void*)&global_cin[global_cin_offset / BUS_PACK_FACTOR0], sizeof(data_t0) * LAYER_IN_NUM_T * LAYER_IN_H_HW * LAYER_IN_W_HW);
 	} else {
+		// Read the data based on the data layout used.
+		// If filter size is 1, the data layout is ceil(N / Tn) * ceil(H / Th) * ceil(W / Tw) * Th * Tw * Tn
+		// o.w. ceil(N / Tn) * H * ceil(W / Tw) * Tw * Tn
+		// The data in on-chip buffer will have the data layout of Th * Tw * Tn
 		if (change && FILTER_S == 1){
 			for (int hh = 0; hh < /*LAYER_IN_H_T + FILTER_S - */1; hh++){
 				uint local_cin_offset = 0;
@@ -91,14 +95,18 @@ void cin_load_fifo_write(
 	int hh = 0;
 	int ww = 0;
 	bool done = 0;
-	//uint count = 0;
 	while(!done){
 #pragma HLS PIPELINE II=1
+// Data layout of the buffer: Th * Tw * Tn
 		uint local_cin_idx = hh * (LAYER_IN_W_T + FILTER_S - 1) * LAYER_IN_NUM_T + ww * LAYER_IN_NUM_T + ii * DEPTH_CONV_LANE;
 		uint bus_cin_idx = local_cin_idx / BUS_PACK_FACTOR0;
 		uint bus_cin_offset = local_cin_idx % BUS_PACK_FACTOR0;
 		bus_t0 bus_cin_data = cin_burst_buf[bus_cin_idx];
 		CinLoadData0Type fifo_cin_data;
+
+// DATA_SEL_FACTOR = BUS_PACK_FACTOR / SIMD_LANE
+// BUS_PACK_FACTOR is the number of elements packed in one to enable memory coalescing
+// Since each entry in FIFOs will be SIMD_LANE elements of the data, we should unpack based on SIMD_LANE
 #if DATA_SEL_FACTOR0 == 1
 		fifo_cin_data = bus_cin_data;
 #elif DATA_SEL_FACTOR0 == 2 
@@ -219,7 +227,8 @@ void cin_load_fifo_write(
 			cout << endl;
 		}
 #endif
-
+		
+		// Repeat until the whole tile is read
 		ww++;
 		if (ww == LAYER_IN_W_T + FILTER_S - 1){
 			ww = 0;
@@ -235,13 +244,13 @@ void cin_load_fifo_write(
 		}
 	}
 
-	//cout << "fifo_cin.write" << count << endl;
 }
 
 
 /*
  * Function name: cin_load_fifo_write_prev
  * Function description: This function writes cin data to the downstream modules.
+ *                       It has the same functionality as cin_load_fifo_write
  */
 void cin_load_fifo_write_prev(
 		bus_t0                         cin_burst_buf[],
@@ -258,11 +267,16 @@ void cin_load_fifo_write_prev(
 	uint count = 0;
 	while(!done){
 #pragma HLS PIPELINE II=1
+// Data layout of the buffer: Th * Tw * Tn
 		uint local_cin_idx = hh * (LAYER_IN_W_T + FILTER_S - 1) * LAYER_IN_NUM_T + ww * LAYER_IN_NUM_T + ii * DEPTH_CONV_LANE;
 		uint bus_cin_idx = local_cin_idx / BUS_PACK_FACTOR0;
 		uint bus_cin_offset = local_cin_idx % BUS_PACK_FACTOR0;
 		bus_t0 bus_cin_data = cin_burst_buf[bus_cin_idx];
 		CinLoadData0Type fifo_cin_data;
+
+// DATA_SEL_FACTOR = BUS_PACK_FACTOR / SIMD_LANE
+// BUS_PACK_FACTOR is the number of elements packed in one to enable memory coalescing
+// Since each entry is FIFOs will be SIMD_LANE elements of the data, we should unpack based on SIMD_LANE
 #if DATA_SEL_FACTOR0 == 1
 		fifo_cin_data = bus_cin_data;
 #elif DATA_SEL_FACTOR0 == 2 
@@ -379,8 +393,8 @@ void cin_load_fifo_write_prev(
 		}
 		cout << endl;
 #endif
-		//count++;
-
+		
+		// Repeat until the whole tile is read
 		ww++;
 		if (ww == LAYER_IN_W_T + FILTER_S - 1){
 			ww = 0;
@@ -396,7 +410,6 @@ void cin_load_fifo_write_prev(
 		}
 	}
 
-	//cout << "fifo_cin.write" << count << endl;
 }
 
 /*
@@ -407,7 +420,6 @@ void cin_load(
 		bus_t0                         *global_cin,
 		uint                           config[CONFIG_PARAMS],
 		hls::stream<CinLoadData0Type>  &fifo_cin,
-		//hls::stream<CinLoadData0Type>  &fifo_cin_prev,
 		hls::stream<ConfigInst>        &fifo_config_out
 ){
 #pragma HLS INLINE off 
@@ -497,10 +509,10 @@ void cin_load(
 	bool change_layout = 0;
 	uint inter_tile = 0;
 	uint channel_iter = 0;
-	//uint prev_iter = 0;
 	while(!done){
-
-		// inst0
+		// Read and extract the parameters/config from the instructions
+		// Refer to pose.h or the README of the repo to find how the instructions are made
+		// inst0 : The hardware sizes of each dimension (the sizes after tiling is applied)
 		LAYER_IN_NUM_HW  = config[0 + layer_iter * CONFIG_PARAMS];
 		LAYER_OUT_NUM_HW = config[1 + layer_iter * CONFIG_PARAMS];
 		LAYER_IN_H_HW    = config[2 + layer_iter * CONFIG_PARAMS];
@@ -508,7 +520,7 @@ void cin_load(
 		LAYER_OUT_H_HW   = config[4 + layer_iter * CONFIG_PARAMS];
 		LAYER_OUT_W_HW   = config[5 + layer_iter * CONFIG_PARAMS];
 
-		// inst1
+		// inst1 : The actual sizes of each dimension
 		LAYER_IN_NUM  = config[6 + layer_iter * CONFIG_PARAMS];
 		LAYER_OUT_NUM = config[7 + layer_iter * CONFIG_PARAMS];
 		LAYER_IN_H    = config[8 + layer_iter * CONFIG_PARAMS];
@@ -516,7 +528,7 @@ void cin_load(
 		LAYER_OUT_H   = config[10 + layer_iter * CONFIG_PARAMS];
 		LAYER_OUT_W   = config[11 + layer_iter * CONFIG_PARAMS];
 
-		// inst2
+		// inst2 : The DRAM locations for reading/writing the data of this layer + Filter and Stride sizes
 		CIN_OFFSET    = config[12 + layer_iter * CONFIG_PARAMS];
 		WEIGHT_OFFSET = config[13 + layer_iter * CONFIG_PARAMS];
 		BIAS_OFFSET   = config[14 + layer_iter * CONFIG_PARAMS];
@@ -525,8 +537,8 @@ void cin_load(
 		FILTER_S2     = config[17 + layer_iter * CONFIG_PARAMS];
 		STRIDE        = config[18 + layer_iter * CONFIG_PARAMS];
 
-		// inst3
-		LAYER_EN        = config[19 + layer_iter * CONFIG_PARAMS];
+		// inst3 : The enable signlas of the modules + DRAM location of the input to the previous layer + Tile sizes
+		LAYER_EN        = config[19 + layer_iter * CONFIG_PARAMS]; // contains the enable signals for the modules
 		PREV_CIN_OFFSET = config[20 + layer_iter * CONFIG_PARAMS];
 		LAYER_IN_NUM_T  = config[21 + layer_iter * CONFIG_PARAMS];
 		LAYER_OUT_NUM_T = config[22 + layer_iter * CONFIG_PARAMS];
@@ -547,7 +559,7 @@ void cin_load(
 		ap_uint<1>  BATCH_NORM_EN_DEPTH  = LAYER_EN[12];
 		LOAD_PREV_CIN  = LAYER_EN[11];
 
-		// inst4
+		// inst4 : The info needed to run the systolic array
 		LAYER_TASK_NUM1       = config[26 + layer_iter * CONFIG_PARAMS];
 		LAYER_TASK_NUM2       = config[27 + layer_iter * CONFIG_PARAMS];
 		LAYER_LOCAL_ACCUM_NUM = config[28 + layer_iter * CONFIG_PARAMS];
@@ -561,13 +573,15 @@ void cin_load(
 		cout << CIN_OFFSET << " " << WEIGHT_OFFSET << " " << BIAS_OFFSET << " " << COUT_OFFSET << " " << FILTER_S1 << " " << FILTER_S2 << " " << STRIDE << endl;
 		cout << LAYER_EN << " " << PREV_CIN_OFFSET << " " << LAYER_IN_NUM_T << " " << LAYER_OUT_NUM_T << " " << LAYER_IN_H_T << " " << LAYER_IN_W_T << endl;
 #endif
-
+		
+		// Pack the parameters to pass them throught the config FIFOs
 		ConfigInst inst0 = (LAYER_OUT_W_HW, LAYER_OUT_H_HW, LAYER_IN_W_HW, LAYER_IN_H_HW, LAYER_OUT_NUM_HW, LAYER_IN_NUM_HW);
 		ConfigInst inst1 = (LAYER_OUT_W, LAYER_OUT_H, LAYER_IN_W, LAYER_IN_H, LAYER_OUT_NUM, LAYER_IN_NUM);
 		ConfigInst inst2 = (STRIDE, FILTER_S2, FILTER_S1, COUT_OFFSET, BIAS_OFFSET, WEIGHT_OFFSET, CIN_OFFSET);
 		ConfigInst inst3 = (LAYER_BATCH, LAYER_IN_W_T, LAYER_IN_H_T, LAYER_OUT_NUM_T, LAYER_IN_NUM_T, PREV_CIN_OFFSET, LAYER_EN);
 		ConfigInst inst4 = (LAYER_COL_IL_FACTOR, LAYER_ROW_IL_FACTOR, LAYER_LOCAL_REG_NUM, LAYER_LOCAL_ACCUM_NUM, LAYER_TASK_NUM2, LAYER_TASK_NUM1);
 
+		// Pass the config/instructions
 		if (layer_start){
 			fifo_config_out.write(inst0);
 			fifo_config_out.write(inst1);
@@ -580,10 +594,7 @@ void cin_load(
 		// offsets
 		uint cin_offset = CIN_OFFSET;
 		uint prev_cin_offset = PREV_CIN_OFFSET;
-		/*if(prev == 0)
-      cin_offset = CIN_OFFSET;
-    else
-      cin_offset = PREV_CIN_OFFSET;*/
+
 
 		if (prev == 1) start_prev = 1;
 
@@ -592,17 +603,17 @@ void cin_load(
 		bool separable_conv = (DEPTH_CONV_EN == 1) && (CONV_EN == 1);
 		bool conv2d = (DEPTH_CONV_EN == 0) && (CONV_EN == 1);
 		bool max_pool = (DEPTH_CONV_EN == 0) && (CONV_EN == 0);
-		change_layout = (((LAYER_IN_W_HW == LAYER_IN_W) || (LAYER_IN_W_HW == LAYER_IN_W_T)) && ((LAYER_IN_H_HW == LAYER_IN_H) || (LAYER_IN_H_HW == LAYER_IN_H_T))); // if next filter = 1 : change the layout to num_tile, h_t, w_t, in_t
+		change_layout = (((LAYER_IN_W_HW == LAYER_IN_W) || (LAYER_IN_W_HW == LAYER_IN_W_T)) && ((LAYER_IN_H_HW == LAYER_IN_H) || (LAYER_IN_H_HW == LAYER_IN_H_T))); // if next filter = 1 : change the layout to num_tile, Th, Tw, Tn
 
+		// If it has to read from DRAM and not the stored data in on-chip storage
 		if (INTER_LOAD_EN == 0){
 			if ((max_pool && out_num_iter == 0) || separable_conv || conv2d || (UP_SAMPLE_EN && out_num_iter == 0)){
 				if (task_cnt == 0){
 					// first load cin
-					
 					cin_load_ddr_read(global_cin, cin_burst_buf_ping, LAYER_IN_H_HW, LAYER_IN_W_HW, LAYER_IN_NUM_T, LAYER_IN_H_T, LAYER_IN_W_T, FILTER_S, cin_offset, in_num_iter, in_h_iter, in_w_iter, num_tile, change_layout, max_pool, 0);
 					
 				} else {
-					// first load cin
+					// Apply double buffering for reading the data and filling the FIFO
 					if (task_cnt % 2 == 1){
 						cin_load_ddr_read(global_cin, cin_burst_buf_pong, LAYER_IN_H_HW, LAYER_IN_W_HW, LAYER_IN_NUM_T, LAYER_IN_H_T, LAYER_IN_W_T, FILTER_S, cin_offset, in_num_iter, in_h_iter, in_w_iter, num_tile, change_layout, max_pool, 0);
 						cin_load_fifo_write(cin_burst_buf_ping, fifo_cin, LAYER_IN_NUM_T_prev, LAYER_IN_H_T_prev, LAYER_IN_W_T_prev, FILTER_S_prev);
@@ -621,6 +632,9 @@ void cin_load(
 			}
 		}
 
+		// Continue until all the tiles are read
+		// Since each layer produces LAYER_OUT_NUM feature maps, 
+		// repeat reading the tiles LAYER_OUT_NUM times
 		in_num_iter += LAYER_IN_NUM_T;
 		if (in_num_iter < LAYER_IN_NUM){
 			channel_iter += ((LAYER_IN_W / LAYER_IN_W_T) * (LAYER_IN_H / LAYER_IN_H_T));
@@ -630,7 +644,6 @@ void cin_load(
 		}
 		num_tile = channel_iter + inter_tile;
 		if (in_num_iter >= LAYER_IN_NUM){
-			//inter_tile++;
 			in_num_iter = 0;
 			channel_iter = 0;
 			in_h_iter += LAYER_IN_H_T;
@@ -662,6 +675,7 @@ void cin_load(
 	}
 
 
+	// Fill the FIFOs with the data for the last tile
 	if (task_cnt % 2 == 1){
 		cin_load_fifo_write(cin_burst_buf_ping, fifo_cin, LAYER_IN_NUM_T_prev, LAYER_IN_H_T_prev, LAYER_IN_W_T_prev, FILTER_S_prev);
 	} else {
@@ -673,12 +687,10 @@ void cin_load(
 
 /*
  * Function name: cin_load
- * Function description: This function loads and distributes cin and instructions.
+ * Function description: This function loads and distributes cin to the previous layer and instructions.
  */
 void cin_load_prev(
 		bus_t0                         *global_cin,
-		/*uint                           config[CONFIG_PARAMS],
-		hls::stream<CinLoadData0Type>  &fifo_cin,*/
 		hls::stream<ConfigInst>        &fifo_config_in,
 		hls::stream<CinLoadData0Type>  &fifo_cin_prev,
 		hls::stream<ConfigInst>        &fifo_config_out
@@ -757,6 +769,7 @@ void cin_load_prev(
 			layer_start = 0;
 		}
 
+		// Refer to cin_load module to understand the meaning of the instructions
 		// inst0
 		ap_uint<32> LAYER_IN_NUM_HW  = inst0(32*0+31, 32*0);
 		ap_uint<32> LAYER_OUT_NUM_HW = inst0(32*1+31, 32*1);
@@ -809,14 +822,9 @@ void cin_load_prev(
 #endif
 
 
-
 		// offsets
 		uint cin_offset = CIN_OFFSET;
 		uint prev_cin_offset = PREV_CIN_OFFSET;
-		/*if(prev == 0)
-      cin_offset = CIN_OFFSET;
-    else
-      cin_offset = PREV_CIN_OFFSET;*/
 
 		if (prev == 1) start_prev = 1;
 
@@ -832,16 +840,14 @@ void cin_load_prev(
 		if (INTER_LOAD_EN == 0){
 			if (((max_pool || UP_SAMPLE_EN) && out_num_iter_prev == 0) || separable_conv || conv2d){
 				if (task_cnt == 0){
-
-					// then load previous cin
-					//if (!done_prev){
+					// First load previous cin
+					// Load only if the enable signal for this module is on
 					if(LOAD_PREV_CIN == 1){
 						cin_load_ddr_read(global_cin, prev_cin_burst_buf_ping, layer_out_h, layer_out_w, LAYER_OUT_NUM_T, LAYER_IN_H_T, LAYER_IN_W_T, 1, prev_cin_offset, out_num_iter_prev, in_h_iter_prev, in_w_iter_prev, num_tile, change_layout, max_pool, 1);
 					} 
 				} else {
-
-					// then load previous cin
-					//if (!done_prev){
+					// Apply double buffering for reading the data and filling the FIFO
+					// Load only if the enable signal for this module is on
 					if(LOAD_PREV_CIN == 1){
 						if (task_cnt % 2 == 1){
 							cin_load_ddr_read(global_cin, prev_cin_burst_buf_pong, layer_out_h, layer_out_w, LAYER_OUT_NUM_T, LAYER_IN_H_T, LAYER_IN_W_T, 1, prev_cin_offset, out_num_iter_prev, in_h_iter_prev, in_w_iter_prev, num_tile, change_layout, max_pool, 1);
@@ -862,7 +868,9 @@ void cin_load_prev(
 			}
 		}
 
-
+		// Continue until all tiles are read
+		// No need to read tiles multiple times 
+		// since it's only read to add them to the result of this layer
 		num_tile++;
 		out_num_iter_prev += LAYER_OUT_NUM_T;
 		if (out_num_iter_prev >= LAYER_OUT_NUM){
@@ -890,8 +898,9 @@ void cin_load_prev(
 	}
 
 
-
+	
 	if (LOAD_PREV_CIN){
+		// Load the last tile to its FIFO
 		if (task_cnt % 2 == 1){
 			cin_load_fifo_write_prev(prev_cin_burst_buf_ping, fifo_cin_prev, LAYER_OUT_NUM_T_prev, LAYER_IN_H_T_prev, LAYER_IN_W_T_prev, 1);
 		} else {
@@ -899,8 +908,6 @@ void cin_load_prev(
 		}
 	} 
 
-
-	//cout << "number of write: " << prev_iter << endl;
 }
 
 
@@ -918,6 +925,7 @@ void weight_load_depth_conv_weight_write(
 		uint in_num_iter,
 		uint out_num_iter
 ){
+	// Refer to cin_load module to understand the meaning of the instructions
 	// inst0
 	ap_uint<32> LAYER_IN_NUM_HW  = inst0(32*0+31, 32*0);
 	ap_uint<32> LAYER_OUT_NUM_HW = inst0(32*1+31, 32*1);
@@ -964,11 +972,16 @@ void weight_load_depth_conv_weight_write(
 		bool done = 0;
 		while(!done){
 #pragma HLS PIPELINE II=1
+// Data layout of the corresponding buffer: F * F * Tn
 			uint local_w_idx = p * FILTER_S1 * LAYER_IN_NUM_T + q * LAYER_IN_NUM_T + ii * SIMD_LANE;
 			uint bus_w_idx = local_w_idx / BUS_PACK_FACTOR1;
 			uint bus_w_offset = local_w_idx % BUS_PACK_FACTOR1;
 			bus_t1 bus_w_data = weight_burst_buf1[bus_w_idx];
 			WeightLoadData0Type fifo_w_data;
+			
+// DATA_SEL_FACTOR = BUS_PACK_FACTOR / SIMD_LANE
+// BUS_PACK_FACTOR is the number of elements packed in one to enable memory coalescing
+// Since each entry in FIFOs will be SIMD_LANE elements of the data, we should unpack based on SIMD_LANE
 #if DATA_SEL_FACTOR1 == 1
 			fifo_w_data = bus_w_data;
 #elif DATA_SEL_FACTOR1 == 2
@@ -1075,6 +1088,8 @@ void weight_load_depth_conv_weight_write(
 			}
 #endif         
 			fifo_depth_conv_weight.write(fifo_w_data);
+			
+			// Repeat until all of the weights for this tile is inserted into its FIFO
 			q++;
 			if (q == FILTER_S1){
 				q = 0;
@@ -1094,8 +1109,9 @@ void weight_load_depth_conv_weight_write(
 }
 
 /*
- * function name: weight_load_conv_weight_write
- * function description: this function writes conv weights to conv module.
+ * Function name: weight_load_conv_weight_write
+ * Function description: this function writes conv weights to conv module.
+ * It has the same functionality as weight_load_depth_conv_weight_write
  */
 void weight_load_conv_weight_write(
 		bus_t1 weight_burst_buf2[],
@@ -1351,6 +1367,10 @@ void weight_load_bias_write(
 				uint bus_b_offset = local_b_idx % BUS_PACK_FACTOR2;
 				bus_t2 bus_b_data = bias_burst_buf[bus_b_idx];
 				WeightLoadData2Type fifo_b_data;
+				
+// DATA_SEL_FACTOR = BUS_PACK_FACTOR / SIMD_LANE
+// BUS_PACK_FACTOR is the number of elements packed in one to enable memory coalescing
+// Since each entry in FIFOs will be SIMD_LANE elements of the data, we should unpack based on SIMD_LANE
 #if DATA_SEL_FACTOR2 == 1
 				fifo_b_data = bus_b_data;
 #elif DATA_SEL_FACTOR2 == 2
@@ -1476,6 +1496,7 @@ void weight_load_depth_norm_write(
 		uint in_num_iter,
 		uint out_num_iter
 ){
+	// Refer to cin_load module to understand the meaning of the instructions
 	// inst0
 	ap_uint<32> LAYER_IN_NUM_HW  = inst0(32*0+31, 32*0);
 	ap_uint<32> LAYER_OUT_NUM_HW = inst0(32*1+31, 32*1);
@@ -1523,6 +1544,10 @@ void weight_load_depth_norm_write(
 			uint bus_b_offset = local_b_idx % BUS_PACK_FACTOR2;
 			bus_t2 bus_b_data = bias_burst_buf[bus_b_idx];
 			WeightLoadData2Type fifo_b_data;
+			
+// DATA_SEL_FACTOR = BUS_PACK_FACTOR / SIMD_LANE
+// BUS_PACK_FACTOR is the number of elements packed in one to enable memory coalescing
+// Since each entry in FIFOs will be SIMD_LANE elements of the data, we should unpack based on SIMD_LANE
 #if DATA_SEL_FACTOR2 == 1
 			fifo_b_data = bus_b_data;
 #elif DATA_SEL_FACTOR2 == 2
@@ -1645,13 +1670,10 @@ void weight_load(
 		hls::stream<ConfigInst>          &fifo_config_in,
 		hls::stream<WeightLoadData0Type> &fifo_depth_conv_weight,
 		hls::stream<WeightLoadData1Type> &fifo_conv_weight,
-		//hls::stream<WeightLoadData2Type> &fifo_bias,
 		hls::stream<ConvData0Type>       &fifo_gamma_depth,
 		hls::stream<ConvData0Type>       &fifo_beta_depth,
 		hls::stream<ConvData0Type>       &fifo_gamma_conv,
 		hls::stream<ConvData0Type>       &fifo_beta_conv,
-		/*hls::stream<CinLoadData0Type>    &fifo_cin_prev_in,
-  hls::stream<CinLoadData0Type>    &fifo_cin_prev_out,*/
 		hls::stream<ConfigInst>          &fifo_config_out
 ){
 #pragma HLS INLINE off 
@@ -1694,7 +1716,6 @@ void weight_load(
 
 	bool layer_start = 0;
 	bool done = 0;
-	//bool bypass_prev = 0;
 	// We assum that cin has been pre-padded with zeros
 	while(!done){
 		if (layer_start){
@@ -1711,6 +1732,7 @@ void weight_load(
 			layer_start = 0;
 		}
 
+		// Refer to cin_load module to understand the meaning of the instructions
 		// inst0
 		ap_uint<32> LAYER_IN_NUM_HW  = inst0(32*0+31, 32*0);
 		ap_uint<32> LAYER_OUT_NUM_HW = inst0(32*1+31, 32*1);
@@ -1759,6 +1781,7 @@ void weight_load(
 		cout << LAYER_EN << " " << PREV_CIN_OFFSET << " " << LAYER_IN_NUM_T << " " << LAYER_OUT_NUM_T << " " << LAYER_IN_H_T << " " << LAYER_IN_W_T << endl;
 #endif
 
+		// Set up some configuration signals
 		bool bias_en = (CONV_EN == 1 && BIAS_EN == 1);
 		bool norm_depth_en = (DEPTH_CONV_EN == 1 && BATCH_NORM_EN_DEPTH == 1);;
 		bool norm_conv_en = (CONV_EN == 1 && BATCH_NORM_EN == 1);
@@ -1769,6 +1792,11 @@ void weight_load(
 		uint gamma_conv_offset = 0;
 		uint bias_offset = BIAS_OFFSET;
 
+		// Set the offsets if batch normalization is used (final_result = gamma * computed_result + beta)
+		// Depthwise separable convolution has two sublayers of computation,
+		// one is the DW sublayer and the other is the normal 1x1 conv sublayer
+		// Both of these layers may need normalization
+		// In DRAM, for each layer, first the BETAs are stored and then the GAMMAs are stored
 		if (norm_depth_en) {
 			beta_depth_offset = bias_offset;
 			gamma_depth_offset = bias_offset + LAYER_IN_NUM_HW;
@@ -1782,7 +1810,6 @@ void weight_load(
 		// offsets
 		uint weight_offset1 = 0;
 		uint weight_offset2 = 0;
-		//uint bias_offset = 0;
 		weight_offset1 = WEIGHT_OFFSET;
 
 		if (DEPTH_CONV_EN == 1)
@@ -1790,7 +1817,8 @@ void weight_load(
 		else
 			weight_offset2 = WEIGHT_OFFSET;
 
-		// bias
+		// Load bias (when batch normalization is not used: final_result = computed_result + bias)
+		// Set GAMMAs to zero
 		if (bias_en){
 			// Only write out in the last iteration
 			if (in_num_iter + LAYER_IN_NUM_T >= LAYER_IN_NUM){
@@ -1803,7 +1831,7 @@ void weight_load(
 			}
 		} else{
 
-      	// batch normalization for depth conv
+      	// Load batch normalization info for depth conv
       	if (norm_depth_en){
       		uint global_beta_offset = beta_depth_offset + in_num_iter;
       		memcpy((void*)beta_depth_burst_buf, (void*)&global_bias[global_beta_offset / BUS_PACK_FACTOR2], sizeof(data_t2) * LAYER_IN_NUM_T);
@@ -1813,7 +1841,7 @@ void weight_load(
       		
       	}
       
-      	//batch normalization for conv
+      	// Load batch normalization info for conv
       	if (norm_conv_en){
       		if (in_num_iter + LAYER_IN_NUM_T >= LAYER_IN_NUM){
       			uint global_bias_offset = beta_conv_offset + out_num_iter;
@@ -1837,7 +1865,7 @@ void weight_load(
 		cout << "loaded beta and gamma" << endl;
 #endif
 
-		// weights1
+		// Load weights of the depth conv module
 		if (DEPTH_CONV_EN == 1){
 			// load from DRAM
 			uint global_weight_offset = weight_offset1 + in_num_iter * FILTER_S1 * FILTER_S1;
@@ -1847,7 +1875,7 @@ void weight_load(
 				memcpy((void*)&weight_burst_buf1, (void*)&global_weight[global_weight_offset / BUS_PACK_FACTOR1], sizeof(data_t1) * LAYER_IN_NUM_T * 3 * 3);
 			}
 		}
-		// weights2
+		// Load weights of the conv module
 		if (CONV_EN == 1){
 			uint global_weight_offset = weight_offset2 + out_num_iter * LAYER_IN_NUM_HW * FILTER_S2 * FILTER_S2 + in_num_iter * LAYER_OUT_NUM_T * FILTER_S2 * FILTER_S2;
 			if (FILTER_S2 == 1){
@@ -1860,7 +1888,7 @@ void weight_load(
 #ifdef DEBUG_weight
 		cout << "loaded weights" << endl;
 #endif
-
+		// Fill the FIFOs with the loaded data
 		weight_load_depth_conv_weight_write(weight_burst_buf1, fifo_depth_conv_weight, inst0, inst1, inst2, inst3, in_num_iter, out_num_iter);
 
 #ifdef DEBUG_weight
@@ -1873,6 +1901,9 @@ void weight_load(
 		cout << "loaded weights" << endl;
 #endif
 
+	// Load BETAs and GAMMAs to their FIFOs
+	// If there doesn't exist a batch normalization and it's a normal bias,
+	// beta = bias, gamma = 0
     if (bias_en) {
 		  weight_load_bias_write(beta_conv_burst_buf, fifo_beta_conv, inst0, inst1, inst2, inst3, in_num_iter, out_num_iter);
       weight_load_bias_write(gamma_conv_burst_buf, fifo_gamma_conv, inst0, inst1, inst2, inst3, in_num_iter, out_num_iter);
@@ -1887,9 +1918,10 @@ void weight_load(
 #ifdef DEBUG_weight
 		cout << in_num_iter << " in num iter " << endl;
 #endif
+		// Repeat until all the tiles are read
+		// Then, have to repeat reading to calculate all LAYER_OUT_NUM output feature maps
 		in_num_iter += LAYER_IN_NUM_T;
 		if (in_num_iter >= LAYER_IN_NUM){
-			//bypass_prev = 1;
 			in_num_iter = 0;
 			in_h_iter += LAYER_IN_H_T;
 			if (in_h_iter >= LAYER_IN_H){
@@ -2133,6 +2165,7 @@ void weight_load(
 //	}
 //}
 
+
 /**
  * Function name: depth_conv
  * Function description: This function performs depthwise convolution.
@@ -2192,7 +2225,7 @@ void depth_conv(
 			layer_start = 0;
 		}
 
-
+		// Refer to cin_load module to understand the meaning of the instructions
 		// inst0
 		ap_uint<32> LAYER_IN_NUM_HW  = inst0(32*0+31, 32*0);
 		ap_uint<32> LAYER_OUT_NUM_HW = inst0(32*1+31, 32*1);
@@ -2254,6 +2287,8 @@ void depth_conv(
 #pragma HLS PIPELINE II=1
 					CinLoadData0Type tmp = fifo_cin.read();
 					fifo_cout.write(tmp);
+					
+					// Repeat until the whole tile is read
 					w++;
 					if (w == LAYER_IN_W_T + FILTER_S - 1){
 						w = 0;
@@ -2306,6 +2341,8 @@ void depth_conv(
 			}
 
 			// compute
+			// The filter size affects the H and W tile sizes in stencil modules 
+			// new_Th = Th + Fh, new_Tw = Tw + Fw
 			if (FILTER_S1 == 1){
 				stencil_w1<data_t0, data_t1, IN_NUM_T, IN_H_T, IN_W_T, DEPTH_CONV_LANE, 1, DATA_W0, DATA_W1>(fifo_cin, weight_buf, fifo_cout, (uint)STRIDE, LAYER_IN_NUM_T, LAYER_IN_H_T, LAYER_IN_W_T);
 			} else if (FILTER_S1 == 3){
@@ -2314,7 +2351,9 @@ void depth_conv(
 			break;
 		}
 		}
-
+		
+		// Repeat until the all of the tiles are read
+		// Must repeat the process until LAYER_OUT_NUM feature maps are computed
 		in_num_iter += LAYER_IN_NUM_T;
 		if (in_num_iter >= LAYER_IN_NUM){
 			//bypass_prev = 1;
@@ -2700,7 +2739,7 @@ void depth_conv(
 
 /**
  * Function name: relu
- * Function description: This functions performs ReLu operation and adds bias to cout results.
+ * Function description: This functions performs ReLu operation and adds bias/applies batch normalization to cout results.
  */
 void relu6(
 		hls::stream<ConvData0Type>        &fifo_cin,
@@ -2733,6 +2772,7 @@ void relu6(
 	ap_uint<32> LAYER_BATCH = inst3(32*5+31, 32*5);
 
 	// dump write instructions
+	// load an extra set of instructions since it's needed at the beginning of conv module
 	fifo_config_out.write(inst0);
 	fifo_config_out.write(inst1);
 	fifo_config_out.write(inst2);
@@ -2741,7 +2781,6 @@ void relu6(
 
 	bool layer_start = 0;
 	bool done = 0;
-	//bool bypass_prev = 0;
 	while(!done){
 
 		if (layer_start){
@@ -2759,12 +2798,7 @@ void relu6(
 			layer_start = 0;
 		}
 
-		/*if (bypass_prev){
-      bypass_prev = 0;
-      CinLoadData0Type data = fifo_cin_prev_in.read();
-      fifo_cin_prev_out.write(data);
-    }*/
-
+		// Refer to cin_load module to understand the meaning of the instructions
 		// inst0
 		ap_uint<32> LAYER_IN_NUM_HW  = inst0(32*0+31, 32*0);
 		ap_uint<32> LAYER_OUT_NUM_HW = inst0(32*1+31, 32*1);
@@ -2822,6 +2856,7 @@ void relu6(
 #pragma HLS ARRAY_PARTITION variable=cin_buf complete
 #pragma HLS ARRAY_PARTITION variable=cout_buf complete
 
+		// Set up some configuration signals
 		uint FILTER_S = (DEPTH_CONV_EN == 1)? 1 : (CONV_EN == 1)? (uint)FILTER_S2: 1;
 		bool separable_conv = (DEPTH_CONV_EN == 1) && (CONV_EN == 1);
 		bool conv2d = (CONV_EN == 1);
@@ -2852,7 +2887,8 @@ void relu6(
 #pragma HLS PIPELINE II=1
 					ConvData0Type tmp = fifo_cin.read();
 					fifo_cout.write(tmp);
-
+					
+					// Repeat until the whole tile is read
 					w++;
 					if (w == w_bound){
 						w = 0;
@@ -2872,6 +2908,9 @@ void relu6(
 		case 1:
 		{
 			if ((max_pool && out_num_iter == 0) || CONV_EN){
+				// Read beta and gamma for the batch normalization
+				// If there doesn't exist a batch normalization and it's a normal bias,
+				// beta = bias, gamma = 0
 				for (int o = 0; o < LAYER_IN_NUM_T / RELU_LANE; o++){
 #pragma HLS PIPELINE II=1
 					ConvData0Type beta = fifo_beta_depth.read();
@@ -2898,16 +2937,20 @@ void relu6(
 
 				int w_bound = LAYER_IN_W_T / STRIDE;
 				int h_bound = LAYER_IN_H_T / STRIDE;
-
+				
+				// compute
 				while(!done2){
 #pragma HLS PIPELINE II=1
+					// Read data
 					ConvData0Type cin_tmp = fifo_cin.read();
+					// Unpack the data based on the SIMD_LANE
 					for (int lane = 0; lane < RELU_LANE; lane++){
 #pragma HLS UNROLL
 						ap_uint<DATA_W0> u32_tmp = cin_tmp(DATA_W0 - 1, 0);
 						cin_buf[lane] = Reinterpret<data_t0>(u32_tmp);
 						cin_tmp = cin_tmp >> DATA_W0;
 					}
+					// Apply beta and gamma + ReLU(6)
 					for (int lane = 0; lane < RELU_LANE; lane++){
 #pragma HLS UNROLL              
 						data_t0 tmp = cin_buf[lane];
@@ -2924,7 +2967,9 @@ void relu6(
 #endif
 						cout_buf[lane] = Reinterpret<ap_uint<DATA_W0> >(tmp);
 					}
+					
 					// write out
+					// pack the data according to SIMD_LANE
 					ReluData0Type wide_tmp = (
 #if RELU_LANE == 16
 							cout_buf[15], cout_buf[14], cout_buf[13], cout_buf[12],
@@ -2932,14 +2977,14 @@ void relu6(
 							cout_buf[7], cout_buf[6], cout_buf[5], cout_buf[4],
 							cout_buf[3], cout_buf[2], cout_buf[1], cout_buf[0]
 #elif RELU_LANE == 8
-																			cout_buf[7], cout_buf[6], cout_buf[5], cout_buf[4],
-																			cout_buf[3], cout_buf[2], cout_buf[1], cout_buf[0]
+							cout_buf[7], cout_buf[6], cout_buf[5], cout_buf[4],
+							cout_buf[3], cout_buf[2], cout_buf[1], cout_buf[0]
 #elif RELU_LANE == 4
-																															cout_buf[3], cout_buf[2], cout_buf[1], cout_buf[0]
+              cout_buf[3], cout_buf[2], cout_buf[1], cout_buf[0]
 #elif RELU_LANE == 2              
-																																											cout_buf[1], cout_buf[0]
+              cout_buf[1], cout_buf[0]
 #elif RELU_LANE == 1
-																																																  cout_buf[0]
+              cout_buf[0]
 #endif                
 					);
 					fifo_cout.write(wide_tmp);
@@ -2963,9 +3008,10 @@ void relu6(
 		}
 		}
 
+		// Repeat until all the tiles are read
+		// Must repeat the computation until LAYER_OUT_NUM output feature maps are generated
 		in_num_iter += LAYER_IN_NUM_T;
 		if (in_num_iter >= LAYER_IN_NUM){
-			//bypass_prev = 1;
 			in_num_iter = 0;
 			in_h_iter += LAYER_IN_H_T;
 			if (in_h_iter >= LAYER_IN_H){
@@ -2991,7 +3037,10 @@ void relu6(
 
 /**
  * Function name: conv
- * Function description:
+ * Function description: This function performs normal convoluation for any given filter size
+ *                       Currently, it is configured to work with the Systolic array
+ *                       Note that the code for Systolic array is not in this file, to see how to add it refer to the README
+ *                       If you want to work with a simple compute engine for conv, uncomment the "kernel" module in this file
  */
 void conv(
 		hls::stream<DepthConvData0Type>  &fifo_cin,
@@ -3008,6 +3057,7 @@ void conv(
 	uint layer_iter = 0;
 
 	// Dummpy first read
+	// The previous module (currently relu6) should write the instructions twice
 	ConfigInst inst0 = fifo_config_in.read();
 	ConfigInst inst1 = fifo_config_in.read();
 	ConfigInst inst2 = fifo_config_in.read();
@@ -3015,7 +3065,7 @@ void conv(
 	ConfigInst inst4 = fifo_config_in.read();
 
 	ap_uint<32> LAYER_BATCH = inst3(32*5+31, 32*5);
-	//cout << LAYER_BATCH << "first" << endl;
+	// Refer to cin_load module to understand the meaning of the instructions
 	// inst0
 	ap_uint<32> LAYER_IN_NUM_HW  = inst0(32*0+31, 32*0);
 	ap_uint<32> LAYER_OUT_NUM_HW = inst0(32*1+31, 32*1);
@@ -3062,11 +3112,9 @@ void conv(
 	bool max_pool = (DEPTH_CONV_EN == 0) && (CONV_EN == 0);
 
 	bool test = (CONV_EN == 0);
-	//cout << test << endl;
 	switch(CONV_EN){
 	case 0:
 		// bypass
-		//cout << LAYER_BATCH << endl;
 		for (int layer_iter = 0; layer_iter < LAYER_BATCH; layer_iter++){
 			// Read instructions
 #ifdef DEBUG_config_conv
@@ -3085,7 +3133,7 @@ void conv(
 			fifo_config_out.write(inst3);
 			inst4 = fifo_config_in.read();
 			fifo_config_out.write(inst4);
-
+			// Refer to cin_load module to understand the meaning of the instructions
 			// inst0
 			LAYER_IN_NUM_HW  = inst0(32*0+31, 32*0);
 			LAYER_OUT_NUM_HW = inst0(32*1+31, 32*1);
@@ -3124,7 +3172,7 @@ void conv(
 			POOL_EN          = LAYER_EN[5];
 			UP_SAMPLE_EN     = LAYER_EN[6]; // reserved
 
-
+			// Set up some configuration signals
 			FILTER_S = (CONV_EN == 1)? (uint)FILTER_S2: 1;
 			separable_conv = (DEPTH_CONV_EN == 1) && (CONV_EN == 1);
 			conv2d = (DEPTH_CONV_EN == 0) && (CONV_EN == 1);
@@ -3145,7 +3193,8 @@ void conv(
 #pragma HLS PIPELINE II=1
 						DepthConvData0Type tmp = fifo_cin.read();
 						fifo_cout.write(tmp);
-
+						
+						// Repeat until the whole tile is read
 						w++;
 						if (w == LAYER_IN_W_T + FILTER_S - 1){
 							w = 0;
@@ -3164,6 +3213,8 @@ void conv(
 #ifdef DEBUG_config_conv
 				cout << in_num_iter << " " << out_num_iter << " " << in_w_iter << " " << in_h_iter << endl;
 #endif
+				// Repeat until all the tiles are read
+				// Must repeat the computation until LAYER_OUT_NUM output feature maps are generated
 				in_num_iter += LAYER_IN_NUM_T;
 				if (in_num_iter >= LAYER_IN_NUM){
 					in_num_iter = 0;
@@ -3185,10 +3236,15 @@ void conv(
 			}
 		}
 		break;
+	// compute
 	case 1:
 #ifdef DEBUG_kernel
 		cout << "before kernel" << endl;
 #endif
+		// Calls systolic array
+		// Refer to README to see how to add the systolic array
+		// You can replace it with your own implementations
+		// If you want to check with a simple implementation, uncomment the "kernel" module in this file
 		kernel(fifo_cin, fifo_weight, fifo_cout, fifo_config_in, fifo_config_out);
 #ifdef DEBUG_kernel
 		cout << "after kernel" << endl;
@@ -3200,6 +3256,7 @@ void conv(
 /**
  * Function name: add
  * Function description: This functions add the input of previous layer to result of this layer.
+ *                       It helps supporting building blocks such as residual bottleneck layer in MobileNetV2
  */
 void add(
 		hls::stream<ConvData0Type>        &fifo_cin,
@@ -3233,7 +3290,6 @@ void add(
 
 	bool layer_start = 0;
 	bool done = 0;
-	//uint num_junk = 0;
 	while(!done){
 
 		if (layer_start){
@@ -3251,6 +3307,7 @@ void add(
 			layer_start = 0;
 		}
 
+		// Refer to cin_load module to understand the meaning of the instructions
 		// inst0
 		ap_uint<32> LAYER_IN_NUM_HW  = inst0(32*0+31, 32*0);
 		ap_uint<32> LAYER_OUT_NUM_HW = inst0(32*1+31, 32*1);
@@ -3305,6 +3362,7 @@ void add(
 #pragma HLS ARRAY_PARTITION variable=conv_buf complete
 #pragma HLS ARRAY_PARTITION variable=cout_buf complete
 
+		// Set up some configuration signals
 		uint FILTER_S = 1;
 		bool separable_conv = (DEPTH_CONV_EN == 1) && (CONV_EN == 1);
 		bool conv2d = (DEPTH_CONV_EN == 0) && (CONV_EN == 1);
@@ -3328,7 +3386,6 @@ void add(
 
 				int w_bound = LAYER_IN_W_T / stride + FILTER_S - 1;
 				int h_bound = LAYER_IN_H_T / stride + FILTER_S - 1;
-        //uint num_junk = 0;
 				while(!done1){
 #pragma HLS PIPELINE II=1
 					if(!fifo_conv.empty()/* && !fifo_cin.empty()*/){
@@ -3337,6 +3394,8 @@ void add(
 						fifo_cout.write(tmp);
 						//ConvData0Type junk = 0;
 						//fifo_cin.read_nb(junk);
+						
+						// Repeat until the whole tile is read
 						w++;
 						if (w == w_bound){
 							w = 0;
@@ -3354,6 +3413,7 @@ void add(
 				}
 			}
 			break;
+		// compute
 		case 1:
 		{
 			if (in_num_iter + LAYER_IN_NUM_T >= LAYER_IN_NUM){
@@ -3368,10 +3428,12 @@ void add(
 				while(!done2){
 #pragma HLS PIPELINE II=1
 					if(!fifo_cin.empty() && !fifo_conv.empty()){
+						// Read the result of this layer and the previous cin
 						ConvData0Type cin_tmp = 0;
 						fifo_cin.read_nb(cin_tmp);
 						ConvData0Type conv_tmp = 0;
 						fifo_conv.read_nb(conv_tmp);
+						// Unpack the data according to SIMD_LANE
 						for (int lane = 0; lane < CONV_LANE; lane++){
 #pragma HLS UNROLL
 							ap_uint<DATA_W0> u32_tmp = cin_tmp(DATA_W0 - 1, 0);
@@ -3386,6 +3448,7 @@ void add(
 							conv_tmp = conv_tmp >> DATA_W0;
 						}
 
+						// Add
 						for (int lane = 0; lane < CONV_LANE; lane++){
 #pragma HLS UNROLL    
 							data_t0 cin_data = cin_buf[lane];
@@ -3399,6 +3462,7 @@ if(lane == 1)
 						}
 
 						// write out
+						// Pack the data according to SIMD_LANE
 						ReluData0Type wide_tmp = (
 #if RELU_LANE == 16
 								cout_buf[15], cout_buf[14], cout_buf[13], cout_buf[12],
@@ -3418,6 +3482,7 @@ if(lane == 1)
 						);
 						fifo_cout.write(wide_tmp);
 
+						// Repeat until the whole tile is read
 						w++;
 						if (w == w_bound){
 							w = 0;
@@ -3438,7 +3503,8 @@ if(lane == 1)
 		}
 		}
 
-	
+		// Repeat until all the tiles are read
+		// Must repeat the computation until LAYER_OUT_NUM output feature maps are generated
 		in_num_iter += LAYER_IN_NUM_T;
 		if (in_num_iter >= LAYER_IN_NUM){
 			in_num_iter = 0;
@@ -3466,11 +3532,10 @@ if(lane == 1)
 
 /**
  * Function name: relu
- * Function description: This functions performs ReLu operation and adds bias to cout results.
+ * Function description: This functions performs ReLu operation and adds bias/applies batch normalization to cout results.
  */
 void relu(
 		hls::stream<ConvData0Type>        &fifo_cin,
-		//hls::stream<WeightLoadData2Type>  &fifo_bias,
 		hls::stream<ConfigInst>           &fifo_config_in,
 		hls::stream<ReluData0Type>        &fifo_cout,
 		hls::stream<ConfigInst>           &fifo_config_out,
@@ -3518,6 +3583,7 @@ void relu(
 			layer_start = 0;
 		}
 
+		// Refer to cin_load module to understand the meaning of the instructions
 		// inst0
 		ap_uint<32> LAYER_IN_NUM_HW  = inst0(32*0+31, 32*0);
 		ap_uint<32> LAYER_OUT_NUM_HW = inst0(32*1+31, 32*1);
@@ -3560,10 +3626,8 @@ void relu(
 		ap_uint<1>  LOAD_PREV_CIN  = LAYER_EN[11];
     ap_uint<1>  BATCH_NORM_EN_DEPTH  = LAYER_EN[12];
 
-		//data_t2 bias_buf[OUT_NUM_T / RELU_LANE][RELU_LANE];
 		data_t2 beta_buf[OUT_NUM_T / RELU_LANE][RELU_LANE];
-		data_t2 gamma_buf[OUT_NUM_T / RELU_LANE][RELU_LANE];
-//#pragma HLS ARRAY_PARTITION variable=bias_buf dim=2 complete  
+		data_t2 gamma_buf[OUT_NUM_T / RELU_LANE][RELU_LANE]; 
 #pragma HLS ARRAY_PARTITION variable=beta_buf dim=2 complete 
 #pragma HLS ARRAY_PARTITION variable=gamma_buf dim=2 complete 
 		data_t0 cin_buf[RELU_LANE];
@@ -3571,6 +3635,7 @@ void relu(
 #pragma HLS ARRAY_PARTITION variable=cin_buf complete
 #pragma HLS ARRAY_PARTITION variable=cout_buf complete
 
+		// Set up some configuration signals
 		uint FILTER_S = 1;
 		bool separable_conv = (DEPTH_CONV_EN == 1) && (CONV_EN == 1);
 		bool conv2d = (DEPTH_CONV_EN == 0) && (CONV_EN == 1);
@@ -3601,10 +3666,12 @@ void relu(
 					ConvData0Type tmp = fifo_cin.read();
 					fifo_cout.write(tmp);
 
+					// If after conv module neither exists bias nor batch normalization layer, there is no data to read from these FIFOs
 					if (norm_conv_en == 1){
 					  ConvData0Type beta_conv = fifo_beta_conv.read();
 					  ConvData0Type gamma_conv = fifo_gamma_conv.read();
           }
+					// Repeat until the whole tile is read
 					w++;
 					if (w == w_bound){
 						w = 0;
@@ -3621,10 +3688,13 @@ void relu(
 				}
 			}
 			break;
+		// compute
 		case 1:
 		{
 			if (in_num_iter + LAYER_IN_NUM_T >= LAYER_IN_NUM){
-
+				// Read beta and gamma for the batch normalization
+				// If there doesn't exist a batch normalization and it's a normal bias,
+				// beta = bias, gamma = 0
 				for (int o = 0; o < LAYER_OUT_NUM_T / RELU_LANE; o++){
 #pragma HLS PIPELINE II=1
 					ConvData0Type beta = fifo_beta_conv.read();
@@ -3655,12 +3725,14 @@ void relu(
 				while(!done2){
 #pragma HLS PIPELINE II=1
 					ConvData0Type cin_tmp = fifo_cin.read();
+					// Unpack data according to SIMD_LANE
 					for (int lane = 0; lane < RELU_LANE; lane++){
 #pragma HLS UNROLL
 						ap_uint<DATA_W0> u32_tmp = cin_tmp(DATA_W0 - 1, 0);
 						cin_buf[lane] = Reinterpret<data_t0>(u32_tmp);
 						cin_tmp = cin_tmp >> DATA_W0;
 					}
+					// Apply beta and gamma + ReLU(6)
 					for (int lane = 0; lane < RELU_LANE; lane++){
 #pragma HLS UNROLL    
 						data_t0 cin_data = cin_buf[lane];
@@ -3686,6 +3758,7 @@ void relu(
 #endif
 					}
 					// write out
+					// Pack according to SIMD_LANE
 					ReluData0Type wide_tmp = (
 #if RELU_LANE == 16
 							cout_buf[15], cout_buf[14], cout_buf[13], cout_buf[12],
@@ -3705,6 +3778,7 @@ void relu(
 					);
 					fifo_cout.write(wide_tmp);
 
+					// Repeat until the whole tile is read
 					w++;
 					if (w == w_bound){
 						w = 0;
@@ -3724,6 +3798,8 @@ void relu(
 		}
 		}
 
+		// Repeat until all the tiles are read
+		// Must repeat the computation until LAYER_OUT_NUM output feature maps are generated
 		in_num_iter += LAYER_IN_NUM_T;
 		if (in_num_iter >= LAYER_IN_NUM){
 			in_num_iter = 0;
@@ -3798,7 +3874,8 @@ void pool(
 
 			layer_start = 0;
 		}
-
+		
+		// Refer to cin_load module to understand the meaning of the instructions
 		// inst0
 		ap_uint<32> LAYER_IN_NUM_HW  = inst0(32*0+31, 32*0);
 		ap_uint<32> LAYER_OUT_NUM_HW = inst0(32*1+31, 32*1);
@@ -3838,12 +3915,14 @@ void pool(
 		ap_uint<1>  UP_SAMPLE_EN   = LAYER_EN[6];  // reserved
 		ap_uint<1>  BIAS_EN        = LAYER_EN[7];
 
+		// Set up some configuration signals
 		bool en = POOL_EN;
 		bool separable_conv = (DEPTH_CONV_EN == 1) && (CONV_EN == 1);
 		bool conv2d = (DEPTH_CONV_EN == 0) && (CONV_EN == 1);
 		bool max_pool = (DEPTH_CONV_EN == 0) && (CONV_EN == 0);
 
 		switch(en){
+		// bypass this module
 		case 0:
 			if ((UP_SAMPLE_EN && out_num_iter == 0) || (!UP_SAMPLE_EN && in_num_iter + LAYER_IN_NUM_T >= LAYER_IN_NUM)){
 				int o = 0;
@@ -3858,7 +3937,8 @@ void pool(
 #pragma HLS PIPELINE II=1
 					PoolData0Type tmp = fifo_cin.read();
 					fifo_cout.write(tmp);
-
+					
+					// Repeat until the whole tile is read
 					w++;
 					if (w == w_bound){
 						w = 0;
@@ -3875,6 +3955,7 @@ void pool(
 				}
 			}
 			break;
+		// compute
 		case 1:
 			if ((max_pool && out_num_iter == 0) || (!max_pool && (in_num_iter + LAYER_IN_NUM_T >= LAYER_IN_NUM))){
 				maxpool_w2 <data_t0, OUT_H_T, OUT_W_T, POOL_LANE, 2, DATA_W0> (fifo_cin, fifo_cout, STRIDE, POOL_EN, LAYER_OUT_NUM_T, LAYER_IN_H_T);
@@ -3882,6 +3963,8 @@ void pool(
 			break;
 		}
 
+		// Repeat until all the tiles are read
+		// Must repeat the computation until LAYER_OUT_NUM output feature maps are generated
 		in_num_iter += LAYER_IN_NUM_T;
 		if (in_num_iter >= LAYER_IN_NUM){
 			in_num_iter = 0;
@@ -3958,7 +4041,8 @@ void upsample(
 
 			layer_start = 0;
 		}
-
+		
+		// Refer to cin_load module to understand the meaning of the instructions
 		// inst0
 		ap_uint<32> LAYER_IN_NUM_HW  = inst0(32*0+31, 32*0);
 		ap_uint<32> LAYER_OUT_NUM_HW = inst0(32*1+31, 32*1);
@@ -3999,12 +4083,14 @@ void upsample(
 		ap_uint<1>  BIAS_EN        = LAYER_EN[7];
     ap_uint<1>  UP_SAMPLE_OUT  = LAYER_EN[12];
 
+		// Set up some configuration signals
 		bool en = UP_SAMPLE_EN;
 		bool separable_conv = (DEPTH_CONV_EN == 1) && (CONV_EN == 1);
 		bool conv2d = (DEPTH_CONV_EN == 0) && (CONV_EN == 1);
 		bool max_pool = (DEPTH_CONV_EN == 0) && (CONV_EN == 0) && (UP_SAMPLE_OUT == 0);
 
 		switch(en){
+		// bypass this module
 		case 0:
 			if ((max_pool && out_num_iter == 0) || (!max_pool && in_num_iter + LAYER_IN_NUM_T >= LAYER_IN_NUM)){
 				int o = 0;
@@ -4020,6 +4106,7 @@ void upsample(
 		PoolData0Type tmp = fifo_cin.read();
 		fifo_cout.write(tmp);
 
+		// Repeat until the whole tile is read
 		w++;
 		if (w == w_bound){
 			w = 0;
@@ -4036,6 +4123,10 @@ void upsample(
 				}
 			}
 			break;
+		// compute
+		// It passes the results to two FIFOs,
+		// one for the results of the odd rows of the imagesize
+		// and the other for the even rows
 		case 1:
 			
 				upsample_w2 <data_t0, OUT_H_T, OUT_W_T2, POOL_LANE, 2, DATA_W0> (fifo_cin, fifo_cout, fifo_cout2, STRIDE, en, LAYER_OUT_NUM_T, LAYER_IN_H_T, LAYER_IN_W_T);
@@ -4043,6 +4134,8 @@ void upsample(
 			break;
 		}
 
+		// Repeat until all the tiles are read
+		// Must repeat the computation until LAYER_OUT_NUM output feature maps are generated
 		in_num_iter += LAYER_IN_NUM_T;
 		if (in_num_iter >= LAYER_IN_NUM){
 			in_num_iter = 0;
@@ -4072,6 +4165,9 @@ void upsample(
 /**
  * Function name: merge_upsample
  * Function description: This function merges two fifos generated by bilinear upsample layer.
+ *						 The upsample moduel passes the results to two FIFOs,
+ *                       one for the results of the odd rows of the imagesize
+ *                       and the other for the even rows
  */
 void merge_upsample(
 		hls::stream<PoolData0Type>  &fifo_cin,
@@ -4103,7 +4199,6 @@ void merge_upsample(
 
 	bool layer_start = 0;
 	bool done = 0;
- //int num_write = 0;
 	while(!done){
 
 		if (layer_start){
@@ -4121,6 +4216,7 @@ void merge_upsample(
 			layer_start = 0;
 		}
 
+		// Refer to cin_load module to understand the meaning of the instructions
 		// inst0
 		ap_uint<32> LAYER_IN_NUM_HW  = inst0(32*0+31, 32*0);
 		ap_uint<32> LAYER_OUT_NUM_HW = inst0(32*1+31, 32*1);
@@ -4159,14 +4255,16 @@ void merge_upsample(
 		ap_uint<1>  POOL_EN        = LAYER_EN[5];
 		ap_uint<1>  UP_SAMPLE_EN   = LAYER_EN[6];  // reserved
 		ap_uint<1>  BIAS_EN        = LAYER_EN[7];
-    ap_uint<1>  UP_SAMPLE_OUT    = LAYER_EN[12];
+		ap_uint<1>  UP_SAMPLE_OUT  = LAYER_EN[12];
 
+		// Set up some configuration signals
 		bool en = UP_SAMPLE_EN;
 		bool separable_conv = (DEPTH_CONV_EN == 1) && (CONV_EN == 1);
 		bool conv2d = (DEPTH_CONV_EN == 0) && (CONV_EN == 1);
 		bool max_pool = (DEPTH_CONV_EN == 0) && (CONV_EN == 0) && (UP_SAMPLE_OUT == 0);
 
 		switch(en){
+		// bypass this module
 		case 0:
 			if ((max_pool && out_num_iter == 0) || (!max_pool && in_num_iter + LAYER_IN_NUM_T >= LAYER_IN_NUM)){
 				int o = 0;
@@ -4179,25 +4277,27 @@ void merge_upsample(
 
 				while(!done1){
 #pragma HLS PIPELINE II=1
-		PoolData0Type tmp = fifo_cin.read();
-		fifo_cout.write(tmp);
+					PoolData0Type tmp = fifo_cin.read();
+					fifo_cout.write(tmp);
 
-		w++;
-		if (w == w_bound){
-			w = 0;
-			h++;
-			if (h == h_bound){
-				h = 0;
-				o++;
-				if (o == LAYER_OUT_NUM_T / POOL_LANE){
-					o = 0;
-					done1 = 1;
-				}
-			}
-		}
+					// Repeat until the whole tile is read
+					w++;
+					if (w == w_bound){
+						w = 0;
+						h++;
+						if (h == h_bound){
+							h = 0;
+							o++;
+							if (o == LAYER_OUT_NUM_T / POOL_LANE){
+								o = 0;
+								done1 = 1;
+							}
+						
+					}
 				}
 			}
 			break;
+		// merge
 		case 1:
 			if (out_num_iter == 0){
 				int o = 0;
@@ -4210,41 +4310,44 @@ void merge_upsample(
 
 				while(!done1){
 #pragma HLS PIPELINE II=1
-          PoolData0Type tmp = 0;
-      		if (h % 2 == 0)
-            tmp = fifo_cin.read();
-          else 
-            tmp = fifo_cin2.read();
-      		fifo_cout.write(tmp);
-        
+					PoolData0Type tmp = 0;
+					// Read the data row by row from the input FIFOs
+					if (h % 2 == 0)
+						tmp = fifo_cin.read();
+					else 
+						tmp = fifo_cin2.read();
+					fifo_cout.write(tmp);
+				
 #ifdef DEBUG_merge
-			for (int lane = 0; lane < CONV_LANE; lane++){
-				ap_uint<DATA_W0> u32_tmp = tmp(DATA_W0 - 1, 0);
-				cout << "lane:" << lane<< "->" << Reinterpret<data_t0>(u32_tmp) << " ";
-				tmp = tmp >> DATA_W0;
-			}
-			cout << endl;
+					for (int lane = 0; lane < CONV_LANE; lane++){
+						ap_uint<DATA_W0> u32_tmp = tmp(DATA_W0 - 1, 0);
+						cout << "lane:" << lane<< "->" << Reinterpret<data_t0>(u32_tmp) << " ";
+						tmp = tmp >> DATA_W0;
+					}
+					cout << endl;
 #endif
-      
-      		w++;
-      		if (w == w_bound){
-      			w = 0;
-      			h++;
-      			if (h == h_bound){
-      				h = 0;
-      				o++;
-      				if (o == LAYER_OUT_NUM_T / POOL_LANE){
-      					o = 0;
-      					done1 = 1;
-      				}
-      			}
-      		}
+					// Repeat until the whole tile is read
+					w++;
+					if (w == w_bound){
+						w = 0;
+						h++;
+						if (h == h_bound){
+							h = 0;
+							o++;
+							if (o == LAYER_OUT_NUM_T / POOL_LANE){
+								o = 0;
+								done1 = 1;
+							}
+						}
+					}
 				}
 			}
 			
 			break;
 		}
 
+		// Repeat until all the tiles are read
+		// Must repeat the computation until LAYER_OUT_NUM output feature maps are generated
 		in_num_iter += LAYER_IN_NUM_T;
 		if (in_num_iter >= LAYER_IN_NUM){
 			in_num_iter = 0;
@@ -4536,7 +4639,6 @@ void cout_write_fifo_read(
 		uint LAYER_OUT_NUM_T,
 		uint LAYER_IN_H_T,
 		uint LAYER_IN_W_T,
-		//  uint num_iter,
 		uint in_h_iter,
 		uint in_w_iter
 ){
@@ -4548,12 +4650,14 @@ void cout_write_fifo_read(
 	cout_debug.open("hw_cout_write_patch.dat", ios::app);
 #endif        
 
-  uint write = 0;
-  if (en == 0 && up_sample == 0) write = 0;
-  else if (en == 1 && up_sample == 0) write = 1;
-  else if (up_sample == 1) write = 2;
+	uint write = 0;
+	// Set up the writing mode
+	if (en == 0 && up_sample == 0) write = 0; // normal writing
+	else if (en == 1 && up_sample == 0) write = 1; // writing after pooling
+	else if (up_sample == 1) write = 2; // writing after upsampling
   
-  int num = 0;
+	// Should store the data as Th * Tw * Tn
+    int num = 0;
 	switch(write){
 	case 0:
 	{
@@ -4581,21 +4685,22 @@ void cout_write_fifo_read(
 #if DATA_SEL_FACTOR0 == 1
 					cout_buf[0]
 #elif DATA_SEL_FACTOR0 == 2
-							 cout_buf[1], cout_buf[0]
+					cout_buf[1], cout_buf[0]
 #elif DATA_SEL_FACTOR0 == 4
-												   cout_buf[3], cout_buf[2], cout_buf[1], cout_buf[0]
+					cout_buf[3], cout_buf[2], cout_buf[1], cout_buf[0]
 #elif DATA_SEL_FACTOR0 == 8
-																								   cout_buf[7], cout_buf[6], cout_buf[5], cout_buf[4],
-																								   cout_buf[3], cout_buf[2], cout_buf[1], cout_buf[0]
+					cout_buf[7], cout_buf[6], cout_buf[5], cout_buf[4],
+					cout_buf[3], cout_buf[2], cout_buf[1], cout_buf[0]
 #elif DATA_SEL_FACTOR0 == 16
-																																				   cout_buf[15], cout_buf[14], cout_buf[13], cout_buf[12],
-																																				   cout_buf[11], cout_buf[10], cout_buf[9], cout_buf[8],
-																																				   cout_buf[7], cout_buf[6], cout_buf[5], cout_buf[4],
-																																				   cout_buf[3], cout_buf[2], cout_buf[1], cout_buf[0]
+				    cout_buf[15], cout_buf[14], cout_buf[13], cout_buf[12],
+				    cout_buf[11], cout_buf[10], cout_buf[9], cout_buf[8],
+				    cout_buf[7], cout_buf[6], cout_buf[5], cout_buf[4],
+				    cout_buf[3], cout_buf[2], cout_buf[1], cout_buf[0]
 #endif                  
 			);
 			cout_burst_buf[local_cout_idx / BUS_PACK_FACTOR0] = wide_pack;
 
+			// Repeat until the whole tile is read
 			w++;
 			if (w == LAYER_IN_W_T){
 				w = 0;
@@ -4638,21 +4743,22 @@ void cout_write_fifo_read(
 #if DATA_SEL_FACTOR0 == 1
 					cout_buf[0]
 #elif DATA_SEL_FACTOR0 == 2
-							 cout_buf[1], cout_buf[0]
+					cout_buf[1], cout_buf[0]
 #elif DATA_SEL_FACTOR0 == 4
-												   cout_buf[3], cout_buf[2], cout_buf[1], cout_buf[0]
+					cout_buf[3], cout_buf[2], cout_buf[1], cout_buf[0]
 #elif DATA_SEL_FACTOR0 == 8
-																								   cout_buf[7], cout_buf[6], cout_buf[5], cout_buf[4],
-																								   cout_buf[3], cout_buf[2], cout_buf[1], cout_buf[0]
+					cout_buf[7], cout_buf[6], cout_buf[5], cout_buf[4],
+					cout_buf[3], cout_buf[2], cout_buf[1], cout_buf[0]
 #elif DATA_SEL_FACTOR0 == 16
-																																				   cout_buf[15], cout_buf[14], cout_buf[13], cout_buf[12],
-																																				   cout_buf[11], cout_buf[10], cout_buf[9], cout_buf[8],
-																																				   cout_buf[7], cout_buf[6], cout_buf[5], cout_buf[4],
-																																				   cout_buf[3], cout_buf[2], cout_buf[1], cout_buf[0]
+					cout_buf[15], cout_buf[14], cout_buf[13], cout_buf[12],
+					cout_buf[11], cout_buf[10], cout_buf[9], cout_buf[8],
+					cout_buf[7], cout_buf[6], cout_buf[5], cout_buf[4],
+					cout_buf[3], cout_buf[2], cout_buf[1], cout_buf[0]
 #endif                  
 			);
 			cout_burst_buf[local_cout_idx / BUS_PACK_FACTOR0] = wide_pack;
 
+			// Repeat until the whole tile is read
 			w++;
 			if (w == LAYER_IN_W_T / 2){
 				w = 0;
@@ -4669,9 +4775,8 @@ void cout_write_fifo_read(
 		}
 	}
 	break;
-  case 2:
+	case 2:
 	{
- //cout << "fifo start" << endl;
 		int o = 0;
 		int h = 0;
 		int w = 0;
@@ -4687,7 +4792,7 @@ void cout_write_fifo_read(
 				wide_tmp = wide_tmp >> DATA_W0 * POOL_LANE;
 			}
 			PoolData0Type tmp = fifo_cout.read();
-      //fifo_cout.read();
+
 			if (in_h_iter * 2 + h < LAYER_OUT_H && in_w_iter * 2 + w < LAYER_OUT_W)
 				cout_buf[(local_cout_idx % BUS_PACK_FACTOR0) / POOL_LANE] = tmp;
 			else
@@ -4696,17 +4801,17 @@ void cout_write_fifo_read(
 #if DATA_SEL_FACTOR0 == 1
 					cout_buf[0]
 #elif DATA_SEL_FACTOR0 == 2
-							 cout_buf[1], cout_buf[0]
+					cout_buf[1], cout_buf[0]
 #elif DATA_SEL_FACTOR0 == 4
-												   cout_buf[3], cout_buf[2], cout_buf[1], cout_buf[0]
+					cout_buf[3], cout_buf[2], cout_buf[1], cout_buf[0]
 #elif DATA_SEL_FACTOR0 == 8
-																								   cout_buf[7], cout_buf[6], cout_buf[5], cout_buf[4],
-																								   cout_buf[3], cout_buf[2], cout_buf[1], cout_buf[0]
+					cout_buf[7], cout_buf[6], cout_buf[5], cout_buf[4],
+					cout_buf[3], cout_buf[2], cout_buf[1], cout_buf[0]
 #elif DATA_SEL_FACTOR0 == 16
-																																				   cout_buf[15], cout_buf[14], cout_buf[13], cout_buf[12],
-																																				   cout_buf[11], cout_buf[10], cout_buf[9], cout_buf[8],
-																																				   cout_buf[7], cout_buf[6], cout_buf[5], cout_buf[4],
-																																				   cout_buf[3], cout_buf[2], cout_buf[1], cout_buf[0]
+					cout_buf[15], cout_buf[14], cout_buf[13], cout_buf[12],
+					cout_buf[11], cout_buf[10], cout_buf[9], cout_buf[8],
+					cout_buf[7], cout_buf[6], cout_buf[5], cout_buf[4],
+					cout_buf[3], cout_buf[2], cout_buf[1], cout_buf[0]
 #endif                  
 			);
 			cout_burst_buf[local_cout_idx / BUS_PACK_FACTOR0] = wide_pack;
@@ -4720,7 +4825,8 @@ void cout_write_fifo_read(
 			}
 			cout << endl;
 #endif
-      w++;
+			// Repeat until the whole tile is read
+			w++;
 			if (w == LAYER_IN_W_T * 2){
 				w = 0;
 				h++;
@@ -4737,7 +4843,6 @@ void cout_write_fifo_read(
 	}
 	break;
 	}
-  //cout << "fifo " << num << endl;
 }
 
 /**
@@ -4760,19 +4865,21 @@ void cout_write_ddr_write(
 		uint LAYER_IN_W_T,
 		uint LAYER_OUT_H_HW,
 		uint LAYER_OUT_W_HW,
-    uint num_tile,
-    uint ind_w_t,
-    uint ind_w,
+		uint num_tile,
+		uint ind_w_t,
+		uint ind_w,
 		uint cout_offset,
-    bool change_layout,
+		bool change_layout,
 		bool run
 ){
-  uint write = 0;
-  if (up_sample == 1) write = 2;
-  else if (en == 0) write = 0;
-  else if (en == 1) write = 1;
-  
-  if (change_layout) write += 3;
+	// Set up the writing mode
+	uint write = 0;
+	if (up_sample == 1) write = 2; // writing after upsampling
+	else if (en == 0) write = 0; // normal writing
+	else if (en == 1) write = 1; // writing after pooling
+	// The default data layout is ceil(N / Tn) * H * ceil(W / Tw) * Tw * Tn
+	// If filter size is 1, the data layout should change to ceil(N / Tn) * ceil(H / Th) * ceil(W / Tw) * Th * Tw * Tn
+	if (change_layout) write += 3; 
   
   
 	if (run){
@@ -4808,13 +4915,12 @@ void cout_write_ddr_write(
 				uint local_cout_idx = hh * LAYER_IN_W_T * 2 * LAYER_OUT_NUM_T;
 #ifdef DEBUG_cout_ddr_up
 				cout << "global:" << global_cout_idx << " h: " << h << " in_h_iter: " << in_h_iter << " local: " << local_cout_idx << endl;
-				//for (int i = 0; i < LAYER_IN_W_T)
 #endif
 				memcpy((void*)&global_cout[global_cout_idx / BUS_PACK_FACTOR0], (void*)&cout_burst_buf[local_cout_idx / BUS_PACK_FACTOR0], sizeof(data_t0) * LAYER_IN_W_T * 2 * LAYER_OUT_NUM_T);
 			}
 		}
 		break;
-    case 3:
+		case 3:
 		{
 			// write out
 			for (int hh  = 0; hh < 1; hh++){
@@ -4955,7 +5061,7 @@ void cout_write(
 	uint ind_w_prev = 0;
 	bool layer_start = 0;
 	bool done = 0;
-  bool change_layout_prev = 0;
+	bool change_layout_prev = 0;
 	// We assum that cin has been pre-padded with zeros
 	while(!done){
 
@@ -4968,6 +5074,7 @@ void cout_write(
 			layer_start = 0;
 		}
 
+		// Refer to cin_load module to understand the meaning of the instructions
 		// inst0
 		LAYER_IN_NUM_HW  = inst0(32*0+31, 32*0);
 		LAYER_OUT_NUM_HW = inst0(32*1+31, 32*1);
@@ -5009,6 +5116,7 @@ void cout_write(
 		INTER_LOAD_EN  = LAYER_EN[8];
 		INTER_WRITE_EN = LAYER_EN[9];
 
+		// Set up some configuration signals
 		cout_offset = COUT_OFFSET;
 		bool en = POOL_EN || (POOL_EN == 0 && STRIDE == 2);
 		bool separable_conv = (DEPTH_CONV_EN == 1) && (CONV_EN == 1);
@@ -5016,11 +5124,12 @@ void cout_write(
 		bool max_pool = (DEPTH_CONV_EN == 0) && (CONV_EN == 0);
 		bool up_sample = UP_SAMPLE_EN;
 		change_layout = (((LAYER_OUT_W_HW == LAYER_OUT_W) || (LAYER_OUT_W_HW == LAYER_IN_W_T)) && ((LAYER_OUT_H_HW == LAYER_OUT_H) || (LAYER_OUT_H_HW == LAYER_IN_H_T))); // if next filter = 1 : change the layout to num_tile, h_t, w_t, in_t
-		//change_layout = 0;
-		//cout << change_layout << endl;
+		
+		// If it is supposed to store the result in DRAM
 		if (INTER_WRITE_EN == 0){
 
 			if (task_cnt == 0){
+				// First, read the data of the first tile from FIFO
 				cout_write_fifo_read(
 						cout_burst_buf_ping, fifo_cout, en, up_sample,
 						LAYER_IN_NUM, LAYER_OUT_H, LAYER_OUT_W,
@@ -5029,6 +5138,7 @@ void cout_write(
 						in_h_iter, in_w_iter
 				);
 			} else {
+				// Apply double buffering for reading the data from FIFO and writing to DRAM
 				if (task_cnt % 2 == 1){
 					cout_write_fifo_read(
 							cout_burst_buf_pong, fifo_cout, en, up_sample,
@@ -5038,21 +5148,21 @@ void cout_write(
 							in_h_iter, in_w_iter
 					);
 
-						cout_write_ddr_write(
-								cout_burst_buf_ping, global_cout,
-								en_prev, up_sample_prev,
-								num_iter_prev, in_h_iter_prev, in_w_iter_prev,
-								LAYER_IN_NUM_prev, LAYER_OUT_NUM_prev,
-								LAYER_IN_NUM_T_prev, LAYER_OUT_NUM_T_prev,
-								LAYER_IN_H_T_prev, LAYER_IN_W_T_prev,
-								LAYER_OUT_H_HW_prev, LAYER_OUT_W_HW_prev,
-                num_tile_prev,
-								ind_w_t_prev,
-								ind_w_prev,
-								cout_offset_prev,
-                change_layout_prev,
-								!write_done
-						);
+					cout_write_ddr_write(
+							cout_burst_buf_ping, global_cout,
+							en_prev, up_sample_prev,
+							num_iter_prev, in_h_iter_prev, in_w_iter_prev,
+							LAYER_IN_NUM_prev, LAYER_OUT_NUM_prev,
+							LAYER_IN_NUM_T_prev, LAYER_OUT_NUM_T_prev,
+							LAYER_IN_H_T_prev, LAYER_IN_W_T_prev,
+							LAYER_OUT_H_HW_prev, LAYER_OUT_W_HW_prev,
+							num_tile_prev,
+							ind_w_t_prev,
+							ind_w_prev,
+							cout_offset_prev,
+							change_layout_prev,
+							!write_done
+					);
 				} else {
 					cout_write_fifo_read(
 							cout_burst_buf_ping, fifo_cout, en, up_sample,
@@ -5062,82 +5172,54 @@ void cout_write(
 							in_h_iter, in_w_iter
 					);
 
-						cout_write_ddr_write(
-								cout_burst_buf_pong, global_cout,
-								en_prev, up_sample_prev,
-								num_iter_prev, in_h_iter_prev, in_w_iter_prev,
-								LAYER_IN_NUM_prev, LAYER_OUT_NUM_prev,
-								LAYER_IN_NUM_T_prev, LAYER_OUT_NUM_T_prev,
-								LAYER_IN_H_T_prev, LAYER_IN_W_T_prev,
-								LAYER_OUT_H_HW_prev, LAYER_OUT_W_HW_prev,
-                num_tile_prev,
-								ind_w_t_prev,
-								ind_w_prev,
-								cout_offset_prev,
-                change_layout_prev,
-								!write_done
-						);
+					cout_write_ddr_write(
+							cout_burst_buf_pong, global_cout,
+							en_prev, up_sample_prev,
+							num_iter_prev, in_h_iter_prev, in_w_iter_prev,
+							LAYER_IN_NUM_prev, LAYER_OUT_NUM_prev,
+							LAYER_IN_NUM_T_prev, LAYER_OUT_NUM_T_prev,
+							LAYER_IN_H_T_prev, LAYER_IN_W_T_prev,
+							LAYER_OUT_H_HW_prev, LAYER_OUT_W_HW_prev,
+							num_tile_prev,
+							ind_w_t_prev,
+							ind_w_prev,
+							cout_offset_prev,
+							change_layout_prev,
+							!write_done
+					);
 				}
 			}
 
 			if (task_cnt > 0){
 				write_done = 1;
 			}
-
-			switch(en){
-			case 0:
-			{
-				task_cnt++;
-				num_iter_prev = num_iter;
-				in_h_iter_prev = in_h_iter;
-				in_w_iter_prev = in_w_iter;
-				en_prev = en;
-				up_sample_prev = up_sample;
-				max_pool_prev = max_pool;
-				LAYER_IN_NUM_prev = LAYER_IN_NUM;
-				LAYER_OUT_NUM_prev = LAYER_OUT_NUM;
-				LAYER_IN_NUM_T_prev = LAYER_IN_NUM_T;
-				LAYER_OUT_NUM_T_prev = LAYER_OUT_NUM_T;
-				LAYER_IN_H_T_prev = LAYER_IN_H_T;
-				LAYER_IN_W_T_prev = LAYER_IN_W_T;
-				LAYER_OUT_H_HW_prev = LAYER_OUT_H_HW;
-				LAYER_OUT_W_HW_prev = LAYER_OUT_W_HW;
-				cout_offset_prev = cout_offset;
-				num_tile_prev = num_tile;
-				ind_w_t_prev = ind_w_t;
-				ind_w_prev = ind_w;
-        change_layout_prev = change_layout;
-				write_done = 0;
-			}
-			break;
-			case 1:
-			{
-				task_cnt++;
-				num_iter_prev = num_iter;
-				in_h_iter_prev = in_h_iter;
-				in_w_iter_prev = in_w_iter;
-				en_prev = en;
-				up_sample_prev = up_sample;
-				max_pool_prev = max_pool;
-				LAYER_IN_NUM_prev = LAYER_IN_NUM;
-				LAYER_OUT_NUM_prev = LAYER_OUT_NUM;
-				LAYER_IN_NUM_T_prev = LAYER_IN_NUM_T;
-				LAYER_OUT_NUM_T_prev = LAYER_OUT_NUM_T;
-				LAYER_IN_H_T_prev = LAYER_IN_H_T;
-				LAYER_IN_W_T_prev = LAYER_IN_W_T;
-				LAYER_OUT_H_HW_prev = LAYER_OUT_H_HW;
-				LAYER_OUT_W_HW_prev = LAYER_OUT_W_HW;
-				cout_offset_prev = cout_offset;
-				num_tile_prev = num_tile;
-				ind_w_t_prev = ind_w_t;
-				ind_w_prev = ind_w;
-        change_layout_prev = change_layout;
-				write_done = 0;
-			}
-			break;
-			}
+			
+			// need to know the config of the current tile in the next iteration since we are using double buffering
+			task_cnt++;
+			num_iter_prev = num_iter;
+			in_h_iter_prev = in_h_iter;
+			in_w_iter_prev = in_w_iter;
+			en_prev = en;
+			up_sample_prev = up_sample;
+			max_pool_prev = max_pool;
+			LAYER_IN_NUM_prev = LAYER_IN_NUM;
+			LAYER_OUT_NUM_prev = LAYER_OUT_NUM;
+			LAYER_IN_NUM_T_prev = LAYER_IN_NUM_T;
+			LAYER_OUT_NUM_T_prev = LAYER_OUT_NUM_T;
+			LAYER_IN_H_T_prev = LAYER_IN_H_T;
+			LAYER_IN_W_T_prev = LAYER_IN_W_T;
+			LAYER_OUT_H_HW_prev = LAYER_OUT_H_HW;
+			LAYER_OUT_W_HW_prev = LAYER_OUT_W_HW;
+			cout_offset_prev = cout_offset;
+			num_tile_prev = num_tile;
+			ind_w_t_prev = ind_w_t;
+			ind_w_prev = ind_w;
+			change_layout_prev = change_layout;
+			write_done = 0;
+			
 		}
 
+		// Repeat until all the tiles are stored
 		if (max_pool || up_sample){
 			//num_tile = task_cnt - 1;
 			num_tile = task_cnt;
@@ -5214,39 +5296,40 @@ void cout_write(
 
 	}
 
+	// Store the last tile
 	if (INTER_WRITE_EN == 0){
 		if (task_cnt % 2 == 1){
-				cout_write_ddr_write(
-						cout_burst_buf_ping, global_cout,
-						en_prev, up_sample_prev,
-						num_iter_prev, in_h_iter_prev, in_w_iter_prev,
-						LAYER_IN_NUM_prev, LAYER_OUT_NUM_prev,
-						LAYER_IN_NUM_T_prev, LAYER_OUT_NUM_T_prev,
-						LAYER_IN_H_T_prev, LAYER_IN_W_T_prev,
-						LAYER_OUT_H_HW_prev, LAYER_OUT_W_HW_prev,
-            num_tile_prev,
-						ind_w_t_prev,
-						ind_w_prev,
-						cout_offset_prev,
-            change_layout_prev,
-						!write_done
-				);
+			cout_write_ddr_write(
+					cout_burst_buf_ping, global_cout,
+					en_prev, up_sample_prev,
+					num_iter_prev, in_h_iter_prev, in_w_iter_prev,
+					LAYER_IN_NUM_prev, LAYER_OUT_NUM_prev,
+					LAYER_IN_NUM_T_prev, LAYER_OUT_NUM_T_prev,
+					LAYER_IN_H_T_prev, LAYER_IN_W_T_prev,
+					LAYER_OUT_H_HW_prev, LAYER_OUT_W_HW_prev,
+					num_tile_prev,
+					ind_w_t_prev,
+					ind_w_prev,
+					cout_offset_prev,
+					change_layout_prev,
+					!write_done
+			);
 		} else {
 			cout_write_ddr_write(
-						cout_burst_buf_pong, global_cout,
-						en_prev, up_sample_prev,
-						num_iter_prev, in_h_iter_prev, in_w_iter_prev,
-						LAYER_IN_NUM_prev, LAYER_OUT_NUM_prev,
-						LAYER_IN_NUM_T_prev, LAYER_OUT_NUM_T_prev,
-						LAYER_IN_H_T_prev, LAYER_IN_W_T_prev,
-						LAYER_OUT_H_HW_prev, LAYER_OUT_W_HW_prev,
-            num_tile_prev,
-						ind_w_t_prev,
-						ind_w_prev,
-						cout_offset_prev,
-            change_layout_prev,
-						!write_done
-				);
+					cout_burst_buf_pong, global_cout,
+					en_prev, up_sample_prev,
+					num_iter_prev, in_h_iter_prev, in_w_iter_prev,
+					LAYER_IN_NUM_prev, LAYER_OUT_NUM_prev,
+					LAYER_IN_NUM_T_prev, LAYER_OUT_NUM_T_prev,
+					LAYER_IN_H_T_prev, LAYER_IN_W_T_prev,
+					LAYER_OUT_H_HW_prev, LAYER_OUT_W_HW_prev,
+					num_tile_prev,
+					ind_w_t_prev,
+					ind_w_prev,
+					cout_offset_prev,
+					change_layout_prev,
+					!write_done
+			);
 		}
 	}
 }
@@ -5270,7 +5353,7 @@ void engine(
 	/**
 	 * Comments: naming rule
 	 * Datatypes: <module_name> + 'Data' + <port_number> + 'Type'
-	 * Instnames: fifo + <module_name> + <port_number>
+	 * Inst_names: fifo + <module_name> + <port_number>
 	 */
 	// --------------------------------------------
 	// Definitions of data fifos
@@ -5284,13 +5367,10 @@ void engine(
 	// Output ports:
 	// 0: weight -> depth_conv
 	// 1: weight -> conv
-	// 2: weight -> relu
 	hls::stream<WeightLoadData0Type> fifo_weight_load_0;
 	hls::stream<WeightLoadData1Type> fifo_weight_load_1;
-	//hls::stream<WeightLoadData2Type> fifo_weight_load_2;
 #pragma HLS STREAM variable=fifo_weight_load_0 depth=64
 #pragma HLS STREAM variable=fifo_weight_load_1 depth=64
-//#pragma HLS STREAM variable=fifo_weight_load_2 depth=64
 	// Module: inter_load
 	// Output ports:
 	// 0: cout -> depth_conv
@@ -5360,17 +5440,7 @@ void engine(
 	// Definitions of bypassing prev cin fifos
 	// ----------------------------------------------
 	hls::stream<CinLoadData0Type> fifo_cin_prev_0;
-	/*hls::stream<CinLoadData0Type> fifo_cin_prev_1;
-  hls::stream<CinLoadData0Type> fifo_cin_prev_2;
-  hls::stream<CinLoadData0Type> fifo_cin_prev_3;
-  hls::stream<CinLoadData0Type> fifo_cin_prev_4;
-  hls::stream<ConvData0Type>    fifo_cin_prev_5;*/
 #pragma HLS STREAM variable=fifo_cin_prev_0 depth=4096
-	/*#pragma HLS STREAM variable=fifo_cin_prev_1 depth=16
-#pragma HLS STREAM variable=fifo_cin_prev_2 depth=16
-#pragma HLS STREAM variable=fifo_cin_prev_3 depth=16
-#pragma HLS STREAM variable=fifo_cin_prev_4 depth=16
-#pragma HLS STREAM variable=fifo_cin_prev_5 depth=16*/
 
 
 	// ----------------------------------------------
@@ -5398,8 +5468,8 @@ void engine(
 	hls::stream<ConfigInst> config_relu;
 //	hls::stream<ConfigInst> config_pool;
 	hls::stream<ConfigInst> config_upsample; // reserved
-  hls::stream<ConfigInst> config_merge;
-	//hls::stream<ConfigInst> config_inter_write;
+	hls::stream<ConfigInst> config_merge;
+//	hls::stream<ConfigInst> config_inter_write;
 	hls::stream<ConfigInst> config_data_write;
 #pragma HLS STREAM variable=config_prev_load depth=16
 #pragma HLS STREAM variable=config_weight_load depth=16
@@ -5419,10 +5489,9 @@ void engine(
 	cout << "start" << endl;
 #endif
 	cin_load(
-			global_cin, // global_weight, global_bias,
+			global_cin, 
 			config,
-			fifo_cin_load_0, // fifo_data_load_1, fifo_data_load_2, fifo_data_load_3,
-			//fifo_cin_prev_0,
+			fifo_cin_load_0, 
 			config_prev_load
 	);
 #ifdef DEBUG_engine
@@ -5430,9 +5499,8 @@ void engine(
 #endif
 
 	cin_load_prev(
-			global_prev_cin, // global_weight, global_bias,
+			global_prev_cin, 
 			config_prev_load,
-			//fifo_cin_load_0, // fifo_data_load_1, fifo_data_load_2, fifo_data_load_3,
 			fifo_cin_prev_0,
 			config_weight_load
 	);
@@ -5442,11 +5510,9 @@ void engine(
 	weight_load(
 			global_weight, global_bias,
 			config_weight_load,
-			fifo_weight_load_0, fifo_weight_load_1,// fifo_weight_load_2,
+			fifo_weight_load_0, fifo_weight_load_1,
 			fifo_beta_depth, fifo_gamma_depth,
 			fifo_beta_conv, fifo_gamma_conv,
-			//fifo_cin_prev_0, fifo_cin_prev_1,
-      // config_inter_load
 			config_depth_conv
 	);
 #ifdef DEBUG_engine
@@ -5457,7 +5523,6 @@ void engine(
 			fifo_inter_write_1,
 			config_inter_load,
 			fifo_inter_load_0,
-			//fifo_cin_prev_1, fifo_cin_prev_2,
 			config_depth_conv
 	);
 #ifdef DEBUG_engine
@@ -5466,24 +5531,21 @@ void engine(
 */
 	depth_conv(
 			fifo_cin_load_0,
-			//fifo_inter_load_0,
 			fifo_weight_load_0,
 			config_depth_conv,
 			fifo_depth_conv_0,
-			//fifo_cin_prev_2, fifo_cin_prev_3,
 			config_relu6
 	);
 #ifdef DEBUG_engine
 	cout << "passed depth conv" << endl;
 #endif
-	// both relu and relu6 support normal relu and relu6, the difference in the modules here is the function's arguments
-	// this relu6 doesn't need to add bias
+	// both relu and relu6 support normal relu and relu6, 
+	// the difference in the modules here is their location in the pipeline
 	// they both have batch normalization in them
 	relu6(
 			fifo_depth_conv_0,
 			config_relu6,
 			fifo_relu6_0,
-			//fifo_cin_prev_3, fifo_cin_prev_4,
 			config_conv,
 			fifo_beta_depth, fifo_gamma_depth
 	);
@@ -5494,16 +5556,16 @@ void engine(
 			fifo_relu6_0, fifo_weight_load_1,
 			config_conv,
 			fifo_conv_0,
-			//fifo_cin_prev_4, fifo_cin_prev_5,
 			config_relu
 	);
 #ifdef DEBUG_engine
 	cout << "passed conv" << endl;
 #endif
-	// both relu and relu6 support normal relu and relu6, the difference in the modules here is the function's arguments
+	// both relu and relu6 support normal relu and relu6, 
+	// the difference in the modules here is their location in the pipeline
 	// they both have batch normalization in them
 	relu(
-			fifo_conv_0, //fifo_weight_load_2,
+			fifo_conv_0, 
 			config_relu,
 			fifo_relu_0,
 			config_add,
@@ -5518,7 +5580,7 @@ void engine(
 			config_add,
 			fifo_add_0,
 			//config_pool
-      config_upsample
+			config_upsample
 	);
 #ifdef DEBUG_engine
 	cout << "passed add" << endl;
@@ -5536,10 +5598,10 @@ void engine(
 */
   upsample(
 			//fifo_pool_0,
-      fifo_add_0,
+			fifo_add_0,
 			config_upsample,
 			fifo_upsample_0,
-      fifo_upsample_1,
+			fifo_upsample_1,
 			config_merge
 	);
 #ifdef DEBUG_engine
@@ -5547,11 +5609,11 @@ void engine(
 #endif
   merge_upsample(
 			fifo_upsample_0,
-      fifo_upsample_1,
+			fifo_upsample_1,
 			config_merge,
 			fifo_merge_0,
 			//config_inter_write
-      config_data_write
+			config_data_write
 	);
 #ifdef DEBUG_engine
 	cout << "passed merge upsample" << endl;
@@ -5567,15 +5629,9 @@ void engine(
 	cout << "passed inter write" << endl;
 #endif
 */
-	//  upsample(
-	//    fifo_pool_0,
-	//    config_upsample,
-	//    fifo_upsample_0,
-	//    config_data_write
-	//    );
 	cout_write(
 			//fifo_inter_write_0,
-      fifo_merge_0,
+			fifo_merge_0,
 			//    fifo_pool_0,
 			config_data_write,
 			global_cout
@@ -5585,15 +5641,17 @@ void engine(
 #endif
 
 }
+
+
 extern "C" {
-void top_kernel(
-		bus_t0 *global_cin,
-		bus_t0 *global_prev_cin,
-		bus_t0 *global_cout,
-		bus_t1 *global_weight,
-		bus_t2 *global_bias,
-		bus_t3 *layer_config
-){
+	void top_kernel(
+			bus_t0 *global_cin,
+			bus_t0 *global_prev_cin,
+			bus_t0 *global_cout,
+			bus_t1 *global_weight,
+			bus_t2 *global_bias,
+			bus_t3 *layer_config
+	){
 #pragma HLS INTERFACE m_axi port=global_cin offset=slave bundle=gmem1 depth=0
 #pragma HLS INTERFACE m_axi port=global_prev_cin offset=slave bundle=gmem3 depth=0
 #pragma HLS INTERFACE m_axi port=global_cout offset=slave bundle=gmem1 depth=826274
@@ -5609,35 +5667,28 @@ void top_kernel(
 #pragma HLS INTERFACE s_axilite port=layer_config bundle=control
 #pragma HLS INTERFACE s_axilite port=return bundle=control
 
-	// Copy the first instruction
-	unsigned int init_inst[5]; // [VGG_LAYERS, STAGE1_LAYERS, STAGE2_LAYRES, STAGE2_ITER]
-	memcpy((void*)init_inst, (void*)(&layer_config[0]), sizeof(unsigned int) * 5);
-	int vgg_layers = init_inst[0];
-  int mobilenet_layers = init_inst[1];
-	int stage1_layers = init_inst[2];
-	int stage2_layers = init_inst[3];
-	int stage2_iter = init_inst[4];
+		// Copy the first instruction
+		unsigned int init_inst[5]; // [LAYERS]
+		memcpy((void*)init_inst, (void*)(&layer_config[0]), sizeof(unsigned int) * 5);
+		int layers = init_inst[0];
 
-	int layer_num = vgg_layers + mobilenet_layers * 2 - 1 + stage1_layers * 2 + stage2_layers * 2 * stage2_iter;
-	//int layer_num = 1;
-	unsigned int config[CONFIG_PARAMS * MAX_LAYER_BATCH];
-	int cur_layer_batch = 1;
-	int nxt_layer_batch = 1;
-	int layer_id = 0;
-	while(layer_id < layer_num){
-		cur_layer_batch = nxt_layer_batch;
+		int layer_num = layers;
+		unsigned int config[CONFIG_PARAMS * MAX_LAYER_BATCH];
+		int cur_layer_batch = 1;
+		int nxt_layer_batch = 1;
+		int layer_id = 0;
+		while(layer_id < layer_num){
+			cur_layer_batch = nxt_layer_batch;
 #ifdef DEBUG_layer
 		cout << "Passed" << layer_id << endl;
 #endif
-		//    cout << layer_id << " " << cur_layer_batch << endl;
-		memcpy((void*)config, (void*)(&layer_config[5 + CONFIG_PARAMS * layer_id]), sizeof(unsigned int) * CONFIG_PARAMS * cur_layer_batch);
-		//memcpy((void*)config, (void*)(&layer_config[CONFIG_PARAMS * layer_id]), sizeof(unsigned int) * CONFIG_PARAMS * cur_layer_batch);
-		nxt_layer_batch = config[CONFIG_PARAMS * (cur_layer_batch - 1) + 26 - 1];
-		config[26 - 1] = cur_layer_batch;
-
-		engine(global_cin, global_prev_cin, global_weight, global_bias, global_cout, config);
-		//layer_id += cur_layer_batch;
-		layer_id += 1;
+			memcpy((void*)config, (void*)(&layer_config[5 + CONFIG_PARAMS * layer_id]), sizeof(unsigned int) * CONFIG_PARAMS * cur_layer_batch);
+			nxt_layer_batch = config[CONFIG_PARAMS * (cur_layer_batch - 1) + 26 - 1];
+			config[26 - 1] = cur_layer_batch;
+			// call engine module for each of the layers
+			engine(global_cin, global_prev_cin, global_weight, global_bias, global_cout, config);
+			//layer_id += cur_layer_batch;
+			layer_id += 1;
+		}
 	}
-}
 }

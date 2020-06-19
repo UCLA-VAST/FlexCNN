@@ -9,10 +9,10 @@
 #define K_T_S 5
 #define LAYER_NUM 87
 #define VGG_LAYERS 88
-#define MobileNetV2_LAYERS 0
-#define STAGE1_LAYERS 0
+#define MobileNetV2_LAYERS 13
+#define STAGE1_LAYERS 5
 #define STAGE1_ITER 1
-#define STAGE2_LAYERS 0
+#define STAGE2_LAYERS 5
 #define STAGE2_ITER 5
 #define MAX_IN_W_T 96
 #define MAX_IN_H_T 24
@@ -49,9 +49,9 @@
 #define STAGE2R_OUT_H_HW 50
 #define STAGE2R_OUT_W_HW 50
 #define STAGE2R_K 3
-#define CIN_SIZE 1262516000
-#define WEIGHT_SIZE 56003200
-#define BIAS_SIZE 1654400
+#define CIN_SIZE 12625160
+#define WEIGHT_SIZE 560032
+#define BIAS_SIZE 16544
 #define STAGE2L_OFFSET 12160160
 #define STAGE2R_OFFSET 12280160
 #define MAX_LAYER_BATCH 1

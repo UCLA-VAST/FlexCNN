@@ -62,6 +62,9 @@ class PBPredictor:
         return self.graph.get_tensor_by_name(tensor_name)
         
     def get_upsample_layer_info(self, upsample_op):
+        """
+          Extract all the info of the upsample operation
+        """
         upsample_op = self._ensure_op(upsample_op)
         
         input_tensors = [tensor for tensor in upsample_op.inputs if tensor.op.type != 'Const']
@@ -92,6 +95,9 @@ class PBPredictor:
         return {}
         
     def get_concat_layer_info(self, concat_op):
+        """
+          Return the input and output tensors of the concat operation
+        """
         concat_op = self._ensure_op(concat_op)
         
         input_tensors = [tensor for tensor in concat_op.inputs if tensor.op.type != 'Const']
@@ -116,6 +122,9 @@ class PBPredictor:
         }
     
     def get_conv_layer_info(self, conv_op):
+        """
+          Extract all the info of the normal/depthwise conv operation
+        """
         conv_op = self._ensure_op(conv_op)
               
         weight_tensors = [tensor for tensor in conv_op.inputs if tensor.op.type == 'Const']
@@ -159,23 +168,35 @@ class PBPredictor:
     def get_op_output_tensor_names(op): return [tensor.name for tensor in op.outputs]
     
     def get_tensor_dest_ops(self, tensor, return_names=False):
+        """
+          Return the list of next operations
+        """
         tensor = self._ensure_tensor(tensor)
         dest_ops = [op for op in self.ops if tensor.name in self.get_op_input_tensor_names(op)]
         return dest_ops if not return_names else self._op_names(dest_ops)
     
     def get_op_next_ops(self, op, return_names=False):
+        """
+          Return the list of next operations and remove the repeated ones
+        """
         op = self._ensure_op(op)
         next_ops = sum([self.get_tensor_dest_ops(tensor) for tensor in op.outputs], [])
         next_ops = list(set(next_ops))
         return next_ops if not return_names else self._op_names(next_ops)
         
     def get_ops_by_filters(self, *filters, return_names=False):
+        """
+          Return the (filtered) operations of the graph
+        """
         candidates = self.ops
         for fltr in filters:
             candidates = list(filter(fltr, candidates))
         return candidates if not return_names else self._op_names(candidates)
     
     def topo_sorted_ops(self, return_names=False, filters=None, remove_const_ops=True):
+        """
+          Sort the operations in the topological order
+        """
         ops = self.ops
         filters = filters or []
         if remove_const_ops: filters.append(lambda op: op.type != 'Const')
@@ -225,6 +246,9 @@ class PBPredictor:
     def _tensor_names(tensors): return [tensor.name for tensor in tensors]
     
     def _verify_input_shape(self, input_shape):
+        """
+          Return the shape of input as a list of length 4
+        """
         if isinstance(input_shape[0], list):
             return [self._verify_input_shape(shape) for shape in input_shape]
         input_shape = list(input_shape)
@@ -238,21 +262,29 @@ class PBPredictor:
             raise ValueError('Invalid input_shape:', input_shape)
 
     def _verify_input_name(self, name):
+        """
+          Check whether the input tensor exists
+        """
         if isinstance(name, list):
             return [self._verify_input_name(n)[0] for n in name]
         return [self._get_op_name(name)]
 
     def _verify_output_name(self, name):
+        """
+          Check whether the output tensor exists
+        """
         if isinstance(name, list):
             return [self._verify_output_name(n)[0] for n in name]
         return [self._get_tensor_name(name)]
     
     def run(self, file_name):
+      # Sort the operations in topological order
       topo_sorted = self.topo_sorted_ops(return_names=False)[:]
 
       info = {}
       all_info = {}
       layer_num = 0
+      # For each operation in the graph, extract the required info
       for ind, op in enumerate(topo_sorted):
         if op.type == 'Conv2D':
           new_info = self.get_conv_layer_info(op.name)
@@ -345,6 +377,16 @@ class PBPredictor:
 	  
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(description='Data reorganization.')
+  """
+    Pass the following command line arguments or change the default value
+    
+      -p : The location where the protobuf text file is stored (do not pass the binary format)
+      -m : The name of the output file. This file will have the information needed by the hardware. You should pass the file to DSE in the next step.
+      -i : The name of the json file containing format of the image
+      -g : Only specify it if you have used a name for your graph in the protobuf text file. Otherwise leave it blank.
+      -n : The name of the first input tensor of your graph
+      -o : The name of the last tensor in your graph
+  """
 
   parser.add_argument('-p', '--pbtxt', metavar='PBTXT', default='./protobuf.pbtxt', help='path to protobuf text file', dest='pbtxt_path')
   parser.add_argument('-m', '--model', metavar='MODEL', default='./network.model', help='model description', dest='model')

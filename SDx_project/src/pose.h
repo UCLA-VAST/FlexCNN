@@ -14,24 +14,6 @@
 
 #include "params.h"
 
-//#define DEBUG
-#define DEBUG_layer
-//#define DEBUG_engine
-//#define DEBUG_weight
-//#define DEBUG_weight2
-//#define DEBUG_config
-//#define DEBUG_config_relu6
-//#define DEBUG_kernel_cin
-//#define DEBUG_config_add
-//#define DEBUG_conv_core
-//#define DEBUG_relu
-//#define DEBUG_kernel_cin
-//#define DEBUG_depth_weight
-//#define DEBUG_stencil
-//#define DEBUG_depth_relu6
-//#define DEBUG_conv_relu
-//#define DEBUG_add
-//#define DEBUG_load_prev
 
 using namespace std;
 using namespace hls;
@@ -187,6 +169,12 @@ inline To Reinterpret(const From& val){
   return reinterpret_cast<const To&>(val);
 }
 
+
+/**
+ * Function name: stencil_w3
+ * Function description: This function does the computation for depth_conv module with filter size of 3
+ *                       The computation pattern is like a stencil computation
+ */
 template <class T_data_t0, class T_data_t1, int T_IN_NUM_T, int T_IN_H_T, int T_IN_W_T, int T_UNROLL, int T_WS, int T_DATA_WIDTH0, int T_DATA_WIDTH1>
 void stencil_w3(
   hls::stream<ap_uint<T_DATA_WIDTH0 * T_UNROLL> > &fifo_in,
@@ -229,7 +217,6 @@ void stencil_w3(
 
   for (int total_iter = 0; total_iter < bound; total_iter++){
 #pragma HLS PIPELINE II=1 
-   //if (!fifo_in.empty()){
     if (iter == 0){
       trans_cnt = 0;
       inner_trans_cnt = 0;
@@ -244,6 +231,7 @@ void stencil_w3(
     for (int dup = 0; dup < T_UNROLL; dup++){
 #pragma HLS UNROLL
       T_data_t0 tmp1 = 0;
+	  // add a mux to support dynamic tiling
       if (layer_in_w_t == 26) {
         tmp1 = line_buf1[dup][25];
       } else if (layer_in_w_t == 50) {
@@ -260,6 +248,8 @@ void stencil_w3(
       } else if (layer_in_w_t == 98) {
         tmp2 = line_buf2[dup][97];
       }
+	  
+	  // define the line buffers
       for (int i = T_IN_W_T - 1; i >= 1; i--){
 #pragma HLS UNROLL
         line_buf1[dup][i] = line_buf1[dup][i - 1];
@@ -270,7 +260,8 @@ void stencil_w3(
         line_buf3[dup][i] = line_buf3[dup][i - 1];
       }
       
-      if (iter < layer_in_h_t * layer_in_w_t){        
+      if (iter < layer_in_h_t * layer_in_w_t){ 
+		// Unpack the data based on the SIMD_LANE
         ap_uint<T_DATA_WIDTH0> sel_tmp;
 #if DEPTH_CONV_LANE == 16
         switch(dup){
@@ -412,7 +403,10 @@ void stencil_w3(
       sums[dup]  = sum_3_0;
     }
 
-    if (iter >= (T_WS - 1) * layer_in_w_t + T_WS - 1){      
+	// If the first output element is ready, fill the output FIFO
+	// The first output gets ready when all the line buffers are full
+    if (iter >= (T_WS - 1) * layer_in_w_t + T_WS - 1){     
+	  // Check whether the row/column should be skipped due to stride > 1
       col_skip = (inner_trans_cnt % stride != stride - 1);
       row_skip = ((inner_trans_cnt / (layer_in_w_t - (T_WS - 1))) % stride != stride - 1);
       col_strip_skip = trans_cnt % layer_in_w_t >= (layer_in_w_t - (T_WS - 1));
@@ -463,9 +457,14 @@ void stencil_w3(
       }
     }
   }
-  //}
 }
 
+
+/**
+ * Function name: stencil_w1
+ * Function description: This function does the computation for depth_conv module with filter size of 1
+ *                       The computation pattern is like a stencil computation
+ */
 template <class T_data_t0, class T_data_t1, int T_IN_NUM_T, int T_IN_H_T, int T_IN_W_T, int T_UNROLL, int T_WS, int T_DATA_WIDTH0, int T_DATA_WIDTH1>
 void stencil_w1(
   hls::stream<ap_uint<T_DATA_WIDTH0 * T_UNROLL> > &fifo_in,
@@ -504,7 +503,6 @@ void stencil_w1(
 
   for (int total_iter = 0; total_iter < total_bound; total_iter++){
 #pragma HLS PIPELINE II=1  
-   //if (!fifo_in.empty()){
     if (iter == 0){
       trans_cnt = 0;
       inner_trans_cnt = 0;
@@ -522,7 +520,8 @@ void stencil_w1(
         line_buf1[dup][i] = line_buf1[dup][i - 1];
       }
       
-      if (iter < layer_in_h_t * layer_in_w_t){        
+      if (iter < layer_in_h_t * layer_in_w_t){ 
+		// Unpack the data based on the SIMD_LANE
         ap_uint<T_DATA_WIDTH0> sel_tmp;
 #if DEPTH_CONV_LANE == 16
         switch(dup){
@@ -643,8 +642,11 @@ void stencil_w1(
       sums[dup]  = prod_0_0;
     }
 
+	// If the first output element is ready, fill the output FIFO
+	// The first output gets ready when all the line buffers are full
     if (iter >= (T_WS - 1) * layer_in_w_t + T_WS - 1){      
-      col_skip = (inner_trans_cnt % stride != stride - 1);
+      // Check whether the row/column should be skipped due to stride > 1
+	  col_skip = (inner_trans_cnt % stride != stride - 1);
       row_skip = ((inner_trans_cnt / (layer_in_w_t - (T_WS - 1))) % stride != stride - 1);
       col_strip_skip = trans_cnt % layer_in_w_t >= (layer_in_w_t - (T_WS - 1));
       row_strip_skip = trans_cnt / layer_in_w_t >= (layer_in_h_t - (T_WS - 1));
@@ -691,11 +693,14 @@ void stencil_w1(
       }
     }
   }
-  //}
 }
 
 
-// bilinear upsample to 2x
+/**
+ * Function name: upsample_w2
+ * Function description: This function does the computation for bilinear upsampling to 2x
+ *                       The computation pattern is like a stencil computation
+ */
 template <class T_data_t0, int T_IN_H_T, int T_IN_W_T, int T_UNROLL, int T_WS, int T_DATA_WIDTH0>
 void upsample_w2(
   hls::stream<ap_uint<T_DATA_WIDTH0 * T_UNROLL> > &fifo_in,
@@ -763,6 +768,7 @@ void upsample_w2(
     }
 
     for (int dup = 0; dup < T_UNROLL; dup++){
+	  // define the line buffers
       T_data_t0 tmp1 = line_buf1[dup][T_IN_W_T - 1];
       for (int i = T_IN_W_T - 1; i >= 1; i--){
 #pragma HLS UNROLL
@@ -777,6 +783,7 @@ void upsample_w2(
         line_buf_inp[dup][i] = line_buf_inp[dup][i - 1];
       }
       
+	  
       if (iter < layer_in_h_t * T_IN_W_T){
         ap_uint<T_DATA_WIDTH0> sel_tmp;
 #if POOL_LANE == 16
@@ -890,7 +897,6 @@ void upsample_w2(
 #endif     
         line_buf1[dup][0] = Reinterpret<T_data_t0>(sel_tmp);
         line_buf_inp[dup][0] = Reinterpret<T_data_t0>(sel_tmp);
-        //if(dup == 0) cout << Reinterpret<T_data_t0>(sel_tmp) << endl;
       } else {      
         line_buf1[dup][0] = 0.0;
         line_buf_inp[dup][0] = 0.0;
@@ -902,6 +908,7 @@ void upsample_w2(
       T_data_t0 mux_0_1 = max(line_buf1[dup][T_WS - 1], line_buf1[dup][T_WS - 2]);
       T_data_t0 mux_1_0 = max(mux_0_0, mux_0_1);*/
       
+	  // compute the data for the even rows
       T_data_t0 data1 = 0.5*(line_buf2[dup][T_WS - 1] + line_buf1[dup][T_WS - 1]);
       T_data_t0 data2 = 0.25*(line_buf2[dup][T_WS - 1] + line_buf1[dup][T_WS - 1] + line_buf2[dup][T_WS - 2] + line_buf1[dup][T_WS - 2]);
 #ifdef DEBUG_w2
@@ -909,6 +916,7 @@ void upsample_w2(
         cout << "first: " << line_buf2[dup][T_WS - 1] << " " << line_buf1[dup][T_WS - 1] << " " <<line_buf2[dup][T_WS - 2] << " " << line_buf1[dup][T_WS - 2] << " " << data1 << " " << data2 << endl;
 #endif
       
+	  // compute the data for the odd rows
       T_data_t0 data1_inp = line_buf_inp[dup][T_IN_W_T + 1];
       T_data_t0 data2_inp = 0.5*(line_buf_inp[dup][T_IN_W_T] + line_buf_inp[dup][T_IN_W_T + 1]);
 
@@ -918,15 +926,18 @@ void upsample_w2(
 #endif
 
       if (up_en == 1){
-      
+		
+		// If it is the last row of input, the last two rows of the output should be identical
         if(iter >= (layer_in_h_t + T_WS - 2) * T_IN_W_T + T_WS - 1) {
           data1 = data1_inp;
           data2 = data2_inp;
         }
+		
+		// even rows
         sums[dup][T_WS - 2] = data1;
         sums[dup][T_WS - 1] = data2;
         
-        
+        // odd rows
         sums_inp[dup][T_WS - 2] = data1_inp;
         if(iter == end_row){
           sums[dup][T_WS - 1] = data1;
@@ -939,9 +950,10 @@ void upsample_w2(
     
     if(iter == end_row) end_row += T_IN_W_T;
 
+	// If the first output element of the odd rows is ready, fill the first output FIFO
+	// The first output gets ready when all the line buffers are full
     if (iter >= (T_WS - 1) * T_IN_W_T + T_WS - 1){
-      //col_skip = (trans_cnt % stride != 0);
-      //row_skip = ((trans_cnt / T_IN_W_T) % stride != 0);
+	  // Pack the data based on SIMD_LANE
       for (int tw = 0; tw < T_WS; tw++){
       #pragma HLS unroll
         for (int ii = 0; ii < T_UNROLL; ii++){
@@ -976,14 +988,13 @@ void upsample_w2(
 			}
 			cout << endl;
 #endif
-        //cout << "1:" << wide_data << " ";
       }
-      //trans_cnt++;
     }
     
+	// If the first output element of the even rows is ready, fill the second output FIFO
+	// The first output gets ready when all the line buffers are full
     if (iter >= (T_WS - 1) * T_IN_W_T + T_WS - 1){
-      //col_skip = (trans_cnt % stride != 0);
-      //row_skip = ((trans_cnt / T_IN_W_T) % stride != 0);
+	  // Pack the data based on SIMD_LANE
       for (int tw = 0; tw < T_WS; tw++){
       #pragma HLS unroll
         for (int ii = 0; ii < T_UNROLL; ii++){
@@ -1010,7 +1021,6 @@ void upsample_w2(
 #endif            
             );
         fifo_out2.write(wide_data); 
-        //cout << "2:" << wide_data << " ";
       }
       trans_cnt++;
     }
@@ -1028,6 +1038,11 @@ void upsample_w2(
 }
 
 
+/**
+ * Function name: maxpool_w2
+ * Function description: This function does the computation for pooling module with window size of w
+ *                       The computation pattern is like a stencil computation
+ */
 template <class T_data_t0, int T_IN_H_T, int T_IN_W_T, int T_UNROLL, int T_WS, int T_DATA_WIDTH0>
 void maxpool_w2(
   hls::stream<ap_uint<T_DATA_WIDTH0 * T_UNROLL> > &fifo_in,
@@ -1076,6 +1091,7 @@ void maxpool_w2(
     }
 
     for (int dup = 0; dup < T_UNROLL; dup++){
+	  // define the line buffers
       T_data_t0 tmp1 = line_buf1[dup][T_IN_W_T - 1];
       for (int i = T_IN_W_T - 1; i >= 1; i--){
 #pragma HLS UNROLL
@@ -1086,7 +1102,8 @@ void maxpool_w2(
         line_buf2[dup][i] = line_buf2[dup][i - 1];
       }
       
-      if (iter < layer_in_h_t * T_IN_W_T){        
+      if (iter < layer_in_h_t * T_IN_W_T){  
+		// Unpack the data based on the SIMD_LANE
         ap_uint<T_DATA_WIDTH0> sel_tmp;
 #if POOL_LANE == 16
         switch(dup){
@@ -1214,7 +1231,10 @@ void maxpool_w2(
         sums[dup] = line_buf1[dup][T_WS - 2];
     }
 
-    if (iter >= (T_WS - 1) * T_IN_W_T + T_WS - 1){      
+	// If the first output element is ready, fill the output FIFO
+	// The first output gets ready when all the line buffers are full
+    if (iter >= (T_WS - 1) * T_IN_W_T + T_WS - 1){    
+	  // Check whether the row/column should be skipped due to stride > 1
       col_skip = (trans_cnt % stride != 0);
       row_skip = ((trans_cnt / T_IN_W_T) % stride != 0);
       if (!col_skip && !row_skip){
@@ -1222,7 +1242,8 @@ void maxpool_w2(
           T_data_t0 sum_tmp = sums[ii];
           ap_uint<T_DATA_WIDTH0> utmp_tmp = Reinterpret<ap_uint<T_DATA_WIDTH0> >(sum_tmp);
           utmp[ii] = utmp_tmp;
-        }          
+        }  
+		// Pack the data based on SIMD_LANE
         ap_uint<T_DATA_WIDTH0 * T_UNROLL> wide_data = (
 #if POOL_LANE == 16
             utmp[15], utmp[14], utmp[13], utmp[12],

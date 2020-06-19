@@ -382,6 +382,7 @@ def run(f_model, f_input_config, f_board, parallel_en, dynamic_tiling_level):
   concat_channels = {}
   concat_layers_list = {}
   while line_id < len(lines):
+    ## get the concat layers and their input
     line = lines[line_id].strip('\n')
     content = line.split(";")
     if content[1] == 'ConcatV2':
@@ -408,6 +409,7 @@ def run(f_model, f_input_config, f_board, parallel_en, dynamic_tiling_level):
   total_layer = 0
   line_id = 0
   while line_id < len(lines):
+    ## extract the information of each layer
     line = lines[line_id].strip('\n')
     content = line.split(";")
     if len(content) < 2:
@@ -507,6 +509,7 @@ def run(f_model, f_input_config, f_board, parallel_en, dynamic_tiling_level):
   opt_params = {}
 
   params_list = []
+  # Construct the list of all different tiling factors
   for IN_H_T in list(filter(lambda x : network_in_h % x == 0 and x % 2 == 0, range(1, int(network_in_h / 16) + 1))): # upper_bound
     for IN_W_T in list(filter(lambda x : network_in_w % x == 0 and x % 2 == 0, range(1, 96 + 1))): # upper_bound
       for IN_NUM_T in list(filter(lambda x : x % 8 == 0, range(1, 64 + 1))): # upper_bound
@@ -648,7 +651,11 @@ def param_sweep(params_list, config, layer_configs, concat_layers_list, total_la
     IN_H_T = params['LAYER_IN_H_T']
     IN_W_T = params['LAYER_IN_W_T']
     SIMD_LANE = params['SIMD_LANE']
-    #print(IN_NUM_T, IN_W_T, SIMD_LANE)
+    
+    ###################################################
+    ## Search through different systolic array sizes ##
+    ###################################################
+    # Turn it off if you want to go with a predefined systolic array size
     for SA_ROWS in list(filter(lambda x : IN_NUM_T % x == 0, range(1, IN_NUM_T + 1))):
       for SA_COLS in list(filter(lambda x : IN_W_T % x == 0, range(1, IN_W_T + 1))):
         for SA_SIMD_LANE in list(filter(lambda x : SIMD_LANE % x == 0, range(1, SIMD_LANE + 1))):
@@ -733,6 +740,18 @@ def param_sweep(params_list, config, layer_configs, concat_layers_list, total_la
 
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(description='Design space exploration.')
+  """
+    Pass the following command line arguments or change the default value
+    
+      -m         : The generated file from protobuf_translation
+      -i         : The name of the json file containing format of the image
+      -b         : The name of the json file containing the number of resources of the target FPGA board
+      --parallel : (True/False) Specify if you want to run the multi-threaded version of this code or not
+      -dt        : The dynamic tiling level you want to have (0: Disabled
+                                                              1: Only number of channels will be dynamic
+                                                              2: All the dimensions will be dynamic)
+  """
+  
 
   parser.add_argument('-m', '--model', metavar='MODEL', default='./network.model', help='model description', dest='model')
   parser.add_argument('-i', '--input-config', metavar='INPUT_CONFIG', default='./input.json', help='input configuration', dest='input_config')
