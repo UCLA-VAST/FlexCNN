@@ -44,7 +44,7 @@ void instInit(
   cout << "Loading instructions..." << endl;
   char* prj_path_c = getenv("PRJ_PATH");
   string prj_path = prj_path_c;
-  string file_path = prj_path + "/data/openpose.insts";
+  string file_path = prj_path + "/auto_compile/inst_gen/network.insts";
   ifstream in_file(file_path.c_str());
   
   
