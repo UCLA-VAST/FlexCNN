@@ -100,7 +100,7 @@ def layer_latency_est(params):
   out_w_t = params['LAYER_OUT_W_T']
   filter_s1 = params['LAYER_FILTER_S1']
   filter_s2 = params['LAYER_FILTER_S2']
-  lane = params['SIMD_LANE']
+  lane = params['SIMD_FACTOR']
   dw0 = params['DATA_W0']
   dw1 = params['DATA_W1']
   dw2 = params['DATA_W2']
@@ -277,7 +277,7 @@ def BRAM_SDP_predict_HLS(dw, s):
   return BRAM
 
 def res_est(params):
-  SIMD_LANE = params['SIMD_LANE']
+  SIMD_LANE = params['SIMD_FACTOR']
   SA_ROWS = params['SA_ROWS']
   SA_COLS = params['SA_COLS']
   SA_SIMD_LANE = params['SA_SIMD_LANE']
@@ -527,7 +527,7 @@ def run(f_model, f_input_config, f_board, parallel_en, dynamic_tiling_level):
           params['LAYER_OUT_W_T'] = IN_W_T
           params['LAYER_IN_NUM_T'] = IN_NUM_T
           params['LAYER_OUT_NUM_T'] = IN_NUM_T
-          params['SIMD_LANE'] = SIMD_LANE
+          params['SIMD_FACTOR'] = SIMD_LANE
           tmp_params = dict(params)
           params_list.append(tmp_params)
 
@@ -537,7 +537,7 @@ def run(f_model, f_input_config, f_board, parallel_en, dynamic_tiling_level):
     IN_NUM_T = params['LAYER_IN_NUM_T']
     IN_H_T = params['LAYER_IN_H_T']
     IN_W_T = params['LAYER_IN_W_T']
-    SIMD_LANE = params['SIMD_LANE']
+    SIMD_LANE = params['SIMD_FACTOR']
 #    print(IN_NUM_T, IN_W_T, SIMD_LANE)
     for SA_ROWS in list(filter(lambda x : IN_NUM_T % x == 0, range(1, IN_NUM_T + 1))):
       for SA_COLS in list(filter(lambda x : IN_W_T % x == 0, range(1, IN_W_T + 1))):

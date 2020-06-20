@@ -922,6 +922,14 @@ def run(f_tile, f_model, f_input_config, s_output_tensors):
 
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(description='Data reorganization.')
+  """
+    Pass the following command line arguments or change the default value
+    
+      -t : The name of the json file containing the maximum tiling factors and the systolic array size
+      -m : The generated file from DSE
+      -i : The name of the json file containing format of the image
+      -o : The name of the output tensors
+  """
 
   parser.add_argument('-t', '--tile', metavar='TILE', default='./tile.json', help='tiling configuration', dest='tile')
   parser.add_argument('-m', '--model', metavar='MODEL', default='./network_out.model', help='model description', dest='model')

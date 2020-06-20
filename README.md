@@ -134,25 +134,26 @@ Inst4: task_num1 | task_num2 | local_accum_num | local_reg_num | row_il_factor |
 ````
 
 
-### **Build the HLS kernel**
+### **Build the HLS Kernel**
 
 1. Switch to the HLS Codes directory.
 ````bash
 cd $PRJ_PATH/HLS_Codes
 ````
-2. In the auto_compile/inst_gen folder, change the tile.json file to the systolic array size you want
+2. In the auto_compile/inst_gen folder, change the tile.json file to the systolic array size you want.
 
-3. in the HLS_Codes folder, change the SIMD_LANE in pose.h to the SIMD factor you want
+3. In the HLS_Codes folder, change the SIMD_LANE in pose.h to the SIMD factor you want.
 
-4. in the HLS_Codes/systolic_array_kernel folder, change the followings in cnn_features.json to the configs you want
+4. In the HLS_Codes/systolic_array_kernel folder, change the followings in cnn_features.json to the configs you want. If you have followed the DSE process of last section, you can look for these values in `opt_params.json`.
 ````bash
-SA_ROWS, SA_COLS, SIMD_FACTOR, FC_SIMD_FACTOR, ROW_IL_FACTOR, COL_IL_FACTOR
+SA_ROWS, SA_COLS, SIMD_FACTOR
 ````
 
-Note that FC_SIMD_FACTOR should be the same as SIMD_FACTOR and
+You should also change the values for FC_SIMD_FACTOR, ROW_IL_FACTOR, COL_IL_FACTOR. 
 ````bash
-ROW_IL_FACTOR * SA_ROWS = OUT_NUM_T
-COL_IL_FACTOR * SA_COLS = OUT_IMG_W_T
+FC_SIMD_FACTOR = SIMD_FACTOR
+ROW_IL_FACTOR = OUT_NUM_T / SA_ROWS
+COL_IL_FACTOR = OUT_IMG_W_T / SA_COLS
 ````
 
 5. Use the following command to generate the HLS kernel and prepare all the necessary files.
@@ -166,7 +167,7 @@ vivado_hls -f hls_script.tcl
 ````
 It will take several minutes or so to finish the C simulation. 
 
-### **Build the SDx project**
+### **Build the SDx Project**
 
 So far, you have generated the HLS kernel files for the FPGA accelerator. Next, you have to build the bitstream of the FPGA kernel. You need to combine all kernel files into one single file for SDx project. 
 
@@ -195,5 +196,8 @@ You wil find the host file `pose_prj.exe` and the bistream `binary_container_1.x
 ````bash
 ./pose_prj.exe binary_container_1.xclbin
 ````
+
+### **Integrate to TensorFlow**
+Now that you have the bitstream, you can follow the instructions [here](https://github.com/UCLA-VAST/FlexCNN/blob/master/libsacc/README.md) to integrate your accelerator to TensorFlow.
 
 
