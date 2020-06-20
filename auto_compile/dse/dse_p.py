@@ -322,7 +322,7 @@ def res_est(params):
 
   return DSP, BRAM18K
 
-def run(f_model, f_input_config, f_board, parallel_en, dynamic_tiling_level):
+def run(f_model, f_input_config, f_board, parallel_en, systolic_en, dynamic_tiling_level):
   print("*************************************************")
   # record start time
   global_timer_start = time.time()
@@ -561,7 +561,7 @@ def run(f_model, f_input_config, f_board, parallel_en, dynamic_tiling_level):
 
   chunks = list_split(params_list, num_processes)
   pool = multiprocessing.Pool(processes = num_processes)
-  results = pool.starmap(param_sweep, [(chunk, config, layer_configs, concat_layers_list, total_layer) for chunk in chunks])
+  results = pool.starmap(param_sweep, [(chunk, config, layer_configs, concat_layers_list, total_layer, systolic_en) for chunk in chunks])
 #  result = param_sweep(params_list, config, model_config, layer_configs)
 
   print('Aggregating results...')
@@ -639,7 +639,7 @@ def run(f_model, f_input_config, f_board, parallel_en, dynamic_tiling_level):
   print('Total elapsed time (s): %.3f' % (global_timer_end - global_timer_start))
   print("*************************************************")
 
-def param_sweep(params_list, config, layer_configs, concat_layers_list, total_layer):
+def param_sweep(params_list, config, layer_configs, concat_layers_list, total_layer, systolic_en):
   opt_latency = np.inf
   opt_DSP = np.inf
   opt_BRAM18K = np.inf
@@ -656,12 +656,9 @@ def param_sweep(params_list, config, layer_configs, concat_layers_list, total_la
     ## Search through different systolic array sizes ##
     ###################################################
     # Turn it off if you want to go with a predefined systolic array size
-    for SA_ROWS in list(filter(lambda x : IN_NUM_T % x == 0, range(1, IN_NUM_T + 1))):
-      for SA_COLS in list(filter(lambda x : IN_W_T % x == 0, range(1, IN_W_T + 1))):
-        for SA_SIMD_LANE in list(filter(lambda x : SIMD_LANE % x == 0, range(1, SIMD_LANE + 1))):
-#    for SA_ROWS in [8]:
-#      for SA_COLS in [8]:
-#        for SA_SIMD_LANE in [8]:
+    for SA_ROWS in (list(filter(lambda x : IN_NUM_T % x == 0, range(1, IN_NUM_T + 1))) if systolic_en else [8]):
+      for SA_COLS in (list(filter(lambda x : IN_W_T % x == 0, range(1, IN_W_T + 1))) if systolic_en else [8]):
+        for SA_SIMD_LANE in (list(filter(lambda x : SIMD_LANE % x == 0, range(1, SIMD_LANE + 1))) if systolic_en else [8]):
           params['LAYER_IN_H_T'] = IN_H_T
           params['LAYER_IN_W_T'] = IN_W_T
           params['LAYER_OUT_H_T'] = IN_H_T
@@ -747,6 +744,7 @@ if __name__ == "__main__":
       -i         : The name of the json file containing format of the image
       -b         : The name of the json file containing the number of resources of the target FPGA board
       --parallel : (True/False) Specify if you want to run the multi-threaded version of this code or not
+      --systolic : (True/False) Specify whether you want to search for the shape of systolic array or not
       -dt        : The dynamic tiling level you want to have (0: Disabled
                                                               1: Only number of channels will be dynamic
                                                               2: All the dimensions will be dynamic)
@@ -757,7 +755,8 @@ if __name__ == "__main__":
   parser.add_argument('-i', '--input-config', metavar='INPUT_CONFIG', default='./input.json', help='input configuration', dest='input_config')
   parser.add_argument('-b', '--board', metavar='BOARD', default='./vu9p.json', help='FPGA board information', dest='board')
   parser.add_argument('--parallel', help='multi-threading parallelization', default=True, action='store_true', dest='parallel')
+  parser.add_argument('--systolic', help='systolic-array-search', default=True, action='store_true', dest='systolic')
   parser.add_argument('-dt', '--dynamic-tiling', metavar='DYNAMIC_TILING', help='dynamic tiling level (0:disabled, 1:channel 2:height/width)', required=False, type=int, default=2, dest='dynamic_tiling')
 
   args = parser.parse_args()
-  run(args.model, args.input_config, args.board, args.parallel, args.dynamic_tiling)
+  run(args.model, args.input_config, args.board, args.parallel, args.systolic, args.dynamic_tiling)

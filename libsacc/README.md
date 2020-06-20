@@ -71,7 +71,7 @@ Now, the FlexCNN library is successfully installed in your system.
 
 3. Now, that you have the required files, copy the bitstream (.xclbin file), host executable (.exe file) and instructions (.insts file) to `./config`. 
 
-4. Replace your TensorFlow project with ../tf_DSA. For that, follow the instructions [here](https://github.com/UCLA-VAST/FlexCNN/blob/master/tf_DSA/README.md)
+4. Replace your TensorFlow project with `../tf_DSA`. For that, follow the instructions [here](https://github.com/UCLA-VAST/FlexCNN/blob/master/tf_DSA/README.md#integrate-your-own-application-to-fpga)
 
 
 # API and Usage
