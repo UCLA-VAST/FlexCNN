@@ -27,7 +27,7 @@ if (INSTALL_MODE)
     install(FILES ${CMAKE_SOURCE_DIR}/inc/sacc.hpp DESTINATION include/sacc/ )
     install(FILES ${CMAKE_SOURCE_DIR}/inc/sacc_params.h DESTINATION include/sacc/ )
     install(DIRECTORY ${CMAKE_SOURCE_DIR}/config DESTINATION lib/sacc)
-    install(FILES ${CMAKE_SOURCE_DIR}/config/openpose.insts DESTINATION lib/sacc/config/)
+    install(FILES ${CMAKE_SOURCE_DIR}/config/network.insts DESTINATION lib/sacc/config/)
 
     file(GLOB data_files "${CMAKE_SOURCE_DIR}/data/*.bin")
     foreach(file ${data_files})

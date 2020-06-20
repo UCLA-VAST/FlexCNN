@@ -1,6 +1,6 @@
 Library for Integrating FPGA to TensorFlow
 
-This instruction describes how to build, install and integrate FlexCNN, developed by [UCLA VAST LAB](https://vast.cs.ucla.edu/), to TensorFlow. This implementation is adapted for the [**tensorflow custom operation interface**](https://www.tensorflow.org/guide/extend/op).
+This instruction describes how to build, install and integrate FlexCNN, developed by [UCLA VAST LAB](https://vast.cs.ucla.edu/), to TensorFlow. This implementation is adapted from the [**tensorflow custom operation interface**](https://www.tensorflow.org/guide/extend/op).
 
 # Content
 1. [Hardware and Operating System](#Hardware-and-Operating-System)
@@ -62,6 +62,17 @@ This library uses the [**cmake**](https://cmake.org/) (version >= 3.0) as the bu
     make all
     ````
 Now, the FlexCNN library is successfully installed in your system.
+
+# Use it with Your Own Application
+
+1. Make sure you have installed the library successfully (refer to previous section).
+
+2. You first should build the bitstream. To do that, follow the instructions [here](https://github.com/UCLA-VAST/FlexCNN#build-your-own-hardware).
+
+3. Now, that you have the required files, copy the bitstream (.xclbin file), host executable (.exe file) and instructions (.insts file) to `./config`. 
+
+4. Replace your TensorFlow project with ../tf_DSA. For that, follow the instructions [here](https://github.com/UCLA-VAST/FlexCNN/blob/master/tf_DSA/README.md)
+
 
 # API and Usage
 ## API

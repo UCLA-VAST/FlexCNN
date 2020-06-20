@@ -30,7 +30,7 @@ std::string Sacc::lib_base_path = "/curr/atefehSZ/research/libsacc/";
 #else
 std::string Sacc::lib_base_path = "/usr/local/lib/sacc/";
 #endif
-std::string Sacc::inst_file_path = lib_base_path + "config/openpose.insts";
+std::string Sacc::inst_file_path = lib_base_path + "config/network.insts";
 std::string Sacc::weight_file_path = lib_base_path + "data/weight_reorg.dat";
 std::string Sacc::bias_file_path = lib_base_path + "data/bias_reorg.dat";
 std::string Sacc::xcl_binary_path =
