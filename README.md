@@ -124,8 +124,8 @@ Here is the description of the arguments to the command above:
 --parallel : (True/False) Specify if you want to run the multi-threaded version of this code or not
 --systolic : (True/False) Specify whether you want to search for the shape of systolic array or not
 -dt        : The dynamic tiling level you want to have (0: Disabled
-										1: Only number of channels will be dynamic
-										2: All the dimensions will be dynamic)
+							1: Only number of channels will be dynamic
+							2: All the dimensions will be dynamic)
 ````
 The default is the multi-threaded form. If you want to run it in single-threaded form, change the parallel argument to False.
 You can choose the degree of dynamic tiling that you want to have by changing dynamic tiling argument (-dt). If you set it to 0, all the tiling factors will be uniform. You should choose 1 when you only want to make the tiling factor for input/output channels dynamic. Lastly, by setting it to 2, which is the default one, height and width tiling will be dynamic as well.
