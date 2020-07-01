@@ -12,4 +12,4 @@ cp systolic_array_kernel/output/2D* .
 cp systolic_array_kernel/output/common* .
 
 # copy params.h to HLS project
-cp ../inst_gen/params.h .
+cp ../auto_compile/inst_gen/params.h .
