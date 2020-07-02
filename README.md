@@ -10,12 +10,12 @@ This repo contains the codes for building FlexCNN, an accelerator for running CN
 In this repo, we use [OpenPose](https://arxiv.org/abs/1611.08050) to demonstrate our flow.
 
 ## Content
-1. [Hardware and Operating System](#Hardware-and-Operating-System)
-2. [Requirements and Dependencies](#Requirements-and-Dependencies)
-3. [Project File Tree](#Project-File-Tree)
-4. [Run the Project](#Run-the-Project)
-5. [Build Your Own Hardware](#Build Your Own Hardware)
-6. [Citation](#Citation)
+1. [Hardware and Operating System](#hardware-and-operating-system)
+2. [Requirements and Dependencies](#requirements-and-dependencies)
+3. [Project File Tree](#project-file-tree)
+4. [Run the Project](#run-the-existing-project)
+5. [Build Your Own Hardware](#build-your-own-hardware)
+6. [Citation](#citation)
 
 
 ## HardWare and Operating System
