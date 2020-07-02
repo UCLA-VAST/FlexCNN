@@ -14,7 +14,7 @@ In this repo, we use [OpenPose](https://arxiv.org/abs/1611.08050) to demonstrate
 2. [Requirements and Dependencies](#Requirements-and-Dependencies)
 3. [Project File Tree](#Project-File-Tree)
 4. [Run the Project](#Run-the-Project)
-5. [Build Your Own Hardware](#Build_Your_Own_Hardware)
+5. [Build Your Own Hardware](#Build Your Own Hardware)
 6. [Citation](#Citation)
 
 
