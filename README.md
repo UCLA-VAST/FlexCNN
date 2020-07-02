@@ -15,6 +15,7 @@ In this repo, we use [OpenPose](https://arxiv.org/abs/1611.08050) to demonstrate
 3. [Project File Tree](#Project-File-Tree)
 4. [Run the Project](#Run-the-Project)
 5. [Build Your Own Hardware](#Build_Your_Own_Hardware)
+6. [Citation](#Citation)
 
 
 ## HardWare and Operating System
@@ -226,5 +227,16 @@ You wil find the host file `pose_prj.exe` and the bistream `binary_container_1.x
 
 ### **Integrate to TensorFlow**
 Now that you have the bitstream, you can follow the instructions [here](https://github.com/UCLA-VAST/FlexCNN/blob/master/libsacc/README.md) to integrate your accelerator to TensorFlow.
+
+## Citation
+If you find any of the ideas/codes useful for your research, please cite our paper:
+
+	@inproceedings{sohrabizadeh2020end,
+	  title={End-to-End Optimization of Deep Learning Applications},
+	  author={Sohrabizadeh, Atefeh and Wang, Jie and Cong, Jason},
+	  booktitle={The 2020 ACM/SIGDA International Symposium on Field-Programmable Gate Arrays},
+	  pages={133--139},
+	  year={2020}
+	}
 
 
