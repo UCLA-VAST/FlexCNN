@@ -18,7 +18,7 @@ In this repo, we use [OpenPose](https://arxiv.org/abs/1611.08050) to demonstrate
 6. [Citation](#citation)
 
 
-## HardWare and Operating System
+## Hardware and Operating System
 ### Development
 For development, the OS should be **Ubuntu 18.04 LTS**
 ## Testing and Deployment 
