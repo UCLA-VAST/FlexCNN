@@ -2422,7 +2422,7 @@ void depth_conv(
 //* Function name: kernel
 //* Function description: 
 //*/
-//void kernel2(
+//void kernel(
 //  hls::stream<DepthConvData0Type>  &fifo_cin,
 //  hls::stream<WeightLoadData1Type> &fifo_weight,
 //  hls::stream<ConvData0Type>       &fifo_cout,

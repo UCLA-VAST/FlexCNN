@@ -164,6 +164,11 @@ Inst4: task_num1 | task_num2 | local_accum_num | local_reg_num | row_il_factor |
 
 ### **Build the HLS Kernel**
 
+You can either choose to use systolic arrays for the core computation unit of the convolutional layers or use a naive implementation of the `conv` module. 
+To get higher performance, it is recommended to use the systolic array version. However, if you want to check the functionality of your code faster, you may uncomment the `kernel` and `conv_core` function in `HLS_Codes/kernel.cpp` and skip the systolic array generation.
+
+Follow the below instructions to add the systolic arrays:
+
 1. Switch to the HLS Codes directory.
 ````bash
 cd $PRJ_PATH/HLS_Codes
