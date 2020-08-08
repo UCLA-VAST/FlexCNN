@@ -11,11 +11,7 @@ void instInit(
   ifstream in_file(file_path.c_str());
   
   // model configuration
-  config[0] = VGG_LAYERS;
-  config[1] = MobileNetV2_LAYERS;
-  config[2] = STAGE1_LAYERS;
-  config[3] = STAGE2_LAYERS;
-  config[4] = STAGE2_ITER;
+  config[0] = LAYER_NUM;
  
   if (in_file.is_open()){
     for (int layer_id = 0; layer_id < LAYER_NUM; layer_id++){
