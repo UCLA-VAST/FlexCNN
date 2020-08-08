@@ -650,7 +650,7 @@ def param_sweep(params_list, config, layer_configs, concat_layers_list, total_la
     IN_NUM_T = params['LAYER_IN_NUM_T']
     IN_H_T = params['LAYER_IN_H_T']
     IN_W_T = params['LAYER_IN_W_T']
-    SIMD_LANE = params['SIMD_LANE']
+    SIMD_LANE = params['SIMD_FACTOR']
     
     ###################################################
     ## Search through different systolic array sizes ##
