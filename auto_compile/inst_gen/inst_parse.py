@@ -677,6 +677,7 @@ def run(f_tile, f_model, f_input_config, s_output_tensors):
               for ind, layer_name in enumerate(non_common1):
                 if layer_cout_size_hw[layer_name] == layer_cout_size_hw[non_common2[ind]]:
                   mapped_layers[layer_name] = non_common2[ind]
+                  
                 else: 
                   print("******************************")
                   print("Error! This type of concatenation is not supported. Add your concatenation behavior to the instruction generator.")
@@ -692,8 +693,8 @@ def run(f_tile, f_model, f_input_config, s_output_tensors):
     if add and c_id == len(regions_concat)-1:
       layers = regions_concat_reorg[round_robin_ind[1]]
       non_common1 = [x for x in c_list if x not in layers]
-      non_common1 = [x for x in non_common1 if x not in regions_concat_reorg[round_robin_ind[0]]]
-      non_common2 = [x for x in layers if x not in c_list]
+      non_common1 = sorted([x for x in non_common1 if x not in regions_concat_reorg[round_robin_ind[0]]])
+      non_common2 = sorted([x for x in layers if x not in c_list])
       
       if non_common2 != []:
         for ind, layer_name in enumerate(non_common1):
@@ -718,6 +719,7 @@ def run(f_tile, f_model, f_input_config, s_output_tensors):
 #    
 #  for i, r in mapped_layers.items():
 #    print(i, r)
+
   
   ind_region = 0 
   for ind in regions_normal:
@@ -893,6 +895,7 @@ def run(f_tile, f_model, f_input_config, s_output_tensors):
       tensors = (content[0].strip('][')).split(', ')
       layer_name = (tensors[0]).strip("'")
       prev_layer_name = (tensors[1]).strip("'")
+      actual_layer_name = layer_name
       
       if layer_name in mapped_layers:
         layer_name = mapped_layers[layer_name]
@@ -902,6 +905,13 @@ def run(f_tile, f_model, f_input_config, s_output_tensors):
       inst2 = [layer_configs[layer_name]['CIN_OFFSET'], layer_configs[layer_name]['WEIGHT_OFFSET'], layer_configs[layer_name]['BIAS_OFFSET'], layer_configs[layer_name]['SHIFTED_COUT_OFFSET'], layer_configs[layer_name]['FILTER_S1'], layer_configs[layer_name]['FILTER_S2'], layer_configs[layer_name]['STRIDE']]
       inst3 = [layer_configs[layer_name]['LAYER_EN'], layer_configs[layer_name]['PREV_CIN_OFFSET'], layer_configs[layer_name]['IN_NUM_T'], layer_configs[layer_name]['OUT_NUM_T'], layer_configs[layer_name]['IN_H_T'], layer_configs[layer_name]['IN_W_T'], layer_configs[layer_name]['NXT_LAYER_BATCH']]
       inst4 = [layer_configs[layer_name]['TASK_NUM1'], layer_configs[layer_name]['TASK_NUM2'], layer_configs[layer_name]['LOCAL_ACCUM_NUM'], layer_configs[layer_name]['LOCAL_REG_NUM'], layer_configs[layer_name]['ROW_IL_FACTOR'], layer_configs[layer_name]['COL_IL_FACTOR']]
+      
+      if "Stage6_L1_5" in actual_layer_name:
+        macros.write("#define STAGE2R_OFFSET " + str(int(layer_configs[layer_name]['COUT_OFFSET'] + in_out_offset)) + '\n')
+        
+      if "Stage6_L2_5" in actual_layer_name:
+        macros.write("#define STAGE2L_OFFSET " + str(int(layer_configs[layer_name]['COUT_OFFSET'] + in_out_offset)) + '\n')
+        
   
       insts.writelines(" ".join(str(int(e)) for e in inst0) + "\n")
       insts.writelines(" ".join(str(int(e)) for e in inst1) + "\n")
