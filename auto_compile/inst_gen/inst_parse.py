@@ -2,6 +2,7 @@ from math import ceil
 import json
 import argparse
 from collections import OrderedDict
+from collections import defaultdict
 
 # Instruction Layout:
 # inst0: in_num_hw | out_num_hw | in_h_hw | in_w_hw | out_h_hw | out_w_hw
@@ -144,6 +145,7 @@ def run(f_tile, f_model, f_input_config, s_output_tensors):
   in_h_t_list = []
   in_w_t_list = []
   layer_config_dict = {}
+  layer_id_dict = {}
   line_id = 1
   for line_id in range(1, len(lines)):
     line = lines[line_id].strip('\n')
@@ -163,6 +165,8 @@ def run(f_tile, f_model, f_input_config, s_output_tensors):
         tensors = (content[0].strip('][')).split(', ')
         layer_name = (tensors[0]).strip("'")
         layer_config_dict[layer_name] = layer_config
+        layer_id_dict[layer_name] = line_id
+        line_id += 1
   
   next_layers = {}
   line_id = 1
@@ -626,7 +630,7 @@ def run(f_tile, f_model, f_input_config, s_output_tensors):
               region_layers.append(inp2)
           else:
            region_layers.append(inp)
-        regions_concat[region_id_concat] = region_layers
+        regions_concat[region_id_concat] = [l_name for _, l_name in sorted(zip([layer_id_dict[id_l] for id_l in region_layers], region_layers))]
         region_id_concat += 1
     prev_layer = layer
   
@@ -635,13 +639,20 @@ def run(f_tile, f_model, f_input_config, s_output_tensors):
   region_id_concat = 0
   add_both_round_robin = False
   mapped_layers = {}
+  mapped_layers_reverse = defaultdict(list)
   round_robin_ind = [0,0]
   first_layer_region = {}
+  mapped_region = {}
+  
+  for i in concat_layers_inp:
+    mapped_region[concat_layers_inp[i][0]] = 0
+    if len(concat_layers_inp[i]) > 1:
+      mapped_region[concat_layers_inp[i][1]] = 0
   for c_id, c_list in regions_concat.items():
     add = True
     for c2_id, c2_list in regions_concat.items():
       if c2_id > c_id:
-        if set(c_list).issubset(set(c2_list)): # if the layers are already added, skip them
+        if set(c_list).issubset(set(c2_list)): # if the layers are going to be added, skip them
           add = False
           break
     
@@ -659,16 +670,22 @@ def run(f_tile, f_model, f_input_config, s_output_tensors):
             if not add_both_round_robin and round_robin_id == 1:
               round_robin_ind[0] = region_id_concat - 1
               common = [x for x in c_list if x in c2_list]
+              #print(common)
               for l in c_list:
                 if l not in common:
                   first_layer_region[l] = common[0]
               non_common = [x for x in c_list if x not in c2_list]
               regions_concat_reorg[region_id_concat] = non_common
+              for layer_ in non_common:
+                mapped_region[layer_] = round_robin_id
+              #print(non_common)
               round_robin_ind[1] = region_id_concat
               region_id_concat += 1
               add_both_round_robin = True
              
             layers = regions_concat_reorg[round_robin_ind[round_robin_id]]
+            #print(c_id, c_list)
+            #print(round_robin_ind[round_robin_id], round_robin_id, layers)
             non_common1 = [x for x in c_list if x not in layers]
             non_common1 = [x for x in non_common1 if x not in regions_concat_reorg[round_robin_ind[0]]]
             non_common2 = [x for x in layers if x not in c_list]
@@ -677,6 +694,7 @@ def run(f_tile, f_model, f_input_config, s_output_tensors):
               for ind, layer_name in enumerate(non_common1):
                 if layer_cout_size_hw[layer_name] == layer_cout_size_hw[non_common2[ind]]:
                   mapped_layers[layer_name] = non_common2[ind]
+                  mapped_layers_reverse[non_common2[ind]].append(layer_name)
                   
                 else: 
                   print("******************************")
@@ -712,7 +730,10 @@ def run(f_tile, f_model, f_input_config, s_output_tensors):
       regions_concat_reorg[region_id_concat] = c_list
       region_id_concat += 1
           
-        
+   
+  for layer_ in mapped_layers:
+    mapped_region[layer_] = mapped_region[mapped_layers[layer_]]
+   
     
 #  for r in regions_concat_reorg:
 #    print(r, ":", regions_concat_reorg[r]) 
@@ -726,7 +747,7 @@ def run(f_tile, f_model, f_input_config, s_output_tensors):
     regions[ind_region] = regions_normal[ind]
     ind_region += 1
   
-  for ind in regions_concat_reorg:
+  for ind in reversed(regions_concat_reorg):
     regions[ind_region] = regions_concat_reorg[ind]
     ind_region += 1
 
@@ -784,6 +805,8 @@ def run(f_tile, f_model, f_input_config, s_output_tensors):
   in_w = network_in_w
   out_h = network_in_h
   out_w = network_in_w
+  
+
 
   prev_cin_offset = 0
   layer_cnt = 0
@@ -795,10 +818,12 @@ def run(f_tile, f_model, f_input_config, s_output_tensors):
       layer_name = (tensors[0]).strip("'")
       prev_layer_name = (tensors[1]).strip("'")
       layer_type = content[1]
+      mapped_layer_name = layer_name
       if layer_name in mapped_layers:
-        layer_cnt = layer_cnt + 1
-        line_id = line_id + 1
-        continue
+        mapped_layer_name = mapped_layers[layer_name]
+#        layer_cnt = layer_cnt + 1
+#        line_id = line_id + 1
+#        continue
       cur_filter_s = 1
       if prev_layer_name in concat_layers_list:
         f_list = [max((layer_config_dict[next])['FILTER'] for next in next_layers[layer] if next in layer_config_dict and 'FILTER' in layer_config_dict[next]) for layer in concat_layers_list[prev_layer_name] if layer in next_layers]
@@ -827,11 +852,13 @@ def run(f_tile, f_model, f_input_config, s_output_tensors):
         f_list = [max((layer_config_dict[next])['FILTER'] for next in next_layers[layer] if next in layer_config_dict and 'FILTER' in layer_config_dict[next]) for layer in concat_layers_list[layer_name] if layer in next_layers]
         if len(f_list) > 0: nxt_filter_s = max(f_list)
       else:
-        if (layer_cnt + 1) < len(filter_list): nxt_filter_s = filter_list[layer_cnt + 1]\
+        if (layer_cnt + 1) < len(filter_list): nxt_filter_s = filter_list[layer_cnt + 1]
       
-      layer_region = layer_configs[layer_name]['REGION']
+      layer_region = layer_configs[mapped_layer_name]['REGION']
       cout_offset = regions_offset[layer_region]
       for layer in regions[layer_region]:  
+#        if layer_name == "MobilenetV2/expanded_conv_5/add":
+#          print(layer_region, layer)
         if layer == layer_name:
           break
         cout_offset += layer_cout_size_hw[layer]
@@ -842,33 +869,55 @@ def run(f_tile, f_model, f_input_config, s_output_tensors):
       if layer_cnt == 0:
         cin_offset = 0
       else:
-        if prev_layer_name in layer_configs:
-          if 'SHIFTED_COUT_OFFSET' in layer_configs[prev_layer_name]:
-            cin_offset = layer_configs[prev_layer_name]['SHIFTED_COUT_OFFSET']
-        else: # previous layer is a concatenation layer   
-          layer_name_1st_inp = (concat_layers_inp[prev_layer_name])[0]
+        if prev_layer_name in layer_configs or layer_name in mapped_layers:
+          if 'COUT_OFFSET' in layer_configs[prev_layer_name]:
+            #cin_offset = layer_configs[prev_layer_name]['SHIFTED_COUT_OFFSET']
+            cin_offset = layer_configs[prev_layer_name]['COUT_OFFSET'] + in_out_offset
+            #if layer_name == 'Openpose/MConv_Stage3_L1_1_pointwise/Relu':
+            #  print(layer_name, prev_layer_name, cin_offset, layer_configs[layer_name]['IN_NUM_HW'], layer_configs[layer_name]['IN_H_HW'], layer_configs[layer_name]['IN_W_HW'])
+        else: # previous layer is a concatenation layer  
+          input_layers_list = []
+          for l in concat_layers_inp[prev_layer_name]:
+            if l not in concat_layers_inp:
+              input_layers_list.append(l)
+            else: 
+               for l_inside in concat_layers_inp[l]:
+                input_layers_list.append(l_inside)
+          
+          if mapped_region[concat_layers_inp[prev_layer_name][0]] == 0:
+            sorted_prev_layers = [l_name for _, l_name in sorted(zip([layer_id_dict[id_l] for id_l in input_layers_list], input_layers_list))]
+            layer_name_1st_inp = (sorted_prev_layers)[0]
+          else: 
+            layer_name_1st_inp = concat_layers_inp[prev_layer_name][0]
+          
           if layer_name_1st_inp in mapped_layers:
             layer_name_1st_inp = mapped_layers[layer_name_1st_inp]
           layer_region = layer_configs[layer_name_1st_inp]['REGION']
           if layer_name_1st_inp in first_layer_region:
             first_l = first_layer_region[layer_name_1st_inp]
-            cin_offset = regions_offset[layer_region-1] + layer_configs[first_l]['OUT_NUM_T'] * layer_configs[first_l]['OUT_W_HW'] * int(cur_filter_s / 2) + layer_configs[first_l]['OUT_NUM_T'] * int(cur_filter_s / 2)
+            #cin_offset = regions_offset[layer_region-1] + layer_configs[first_l]['OUT_NUM_T'] * layer_configs[first_l]['OUT_W_HW'] * int(cur_filter_s / 2) + layer_configs[first_l]['OUT_NUM_T'] * int(cur_filter_s / 2) + in_out_offset
+            cin_offset = regions_offset[layer_region-1] + in_out_offset
             for layer in regions[layer_region-1]:  
               if layer == first_l:
                 break
               cin_offset += layer_cout_size_hw[layer]
           else:
-            cin_offset = regions_offset[layer_region] + layer_configs[layer_name_1st_inp]['OUT_NUM_T'] * layer_configs[layer_name_1st_inp]['OUT_W_HW'] * int(cur_filter_s / 2) + layer_configs[layer_name_1st_inp]['OUT_NUM_T'] * int(cur_filter_s / 2)
+            #cin_offset = regions_offset[layer_region] + layer_configs[layer_name_1st_inp]['OUT_NUM_T'] * layer_configs[layer_name_1st_inp]['OUT_W_HW'] * int(cur_filter_s / 2) + layer_configs[layer_name_1st_inp]['OUT_NUM_T'] * int(cur_filter_s / 2) + in_out_offset
+            cin_offset = regions_offset[layer_region] + in_out_offset
           for layer in regions[layer_region]:  
             if layer == layer_name_1st_inp:
               break
             cin_offset += layer_cout_size_hw[layer] 
-  
-      layer_configs[layer_name]['SHIFTED_COUT_OFFSET'] = shifted_cout_offset
+      
+        
+          
+      if layer_name not in mapped_layers:
+        layer_configs[layer_name]['SHIFTED_COUT_OFFSET'] = shifted_cout_offset
+        layer_configs[layer_name]['COUT_OFFSET'] = cout_offset
+      
       layer_configs[layer_name]['CIN_OFFSET'] = cin_offset
       layer_configs[layer_name]['WEIGHT_OFFSET'] = weight_offset
       layer_configs[layer_name]['BIAS_OFFSET'] = bias_offset
-      layer_configs[layer_name]['COUT_OFFSET'] = cout_offset
       layer_configs[layer_name]['PREV_CIN_OFFSET'] = prev_cin_offset
   
       prev_cin_offset = cin_offset
@@ -896,21 +945,23 @@ def run(f_tile, f_model, f_input_config, s_output_tensors):
       layer_name = (tensors[0]).strip("'")
       prev_layer_name = (tensors[1]).strip("'")
       actual_layer_name = layer_name
+      mapped_layer_name = layer_name
       
       if layer_name in mapped_layers:
-        layer_name = mapped_layers[layer_name]
+        #print(layer_name, mapped_layers[layer_name])
+        mapped_layer_name = mapped_layers[layer_name]
       
       inst0 = [layer_configs[layer_name]['IN_NUM_HW'], layer_configs[layer_name]['OUT_NUM_HW'], layer_configs[layer_name]['IN_H_HW'], layer_configs[layer_name]['IN_W_HW'], layer_configs[layer_name]['OUT_H_HW'], layer_configs[layer_name]['OUT_W_HW']]
       inst1 = [layer_configs[layer_name]['IN_NUM'], layer_configs[layer_name]['OUT_NUM'], layer_configs[layer_name]['IN_H'], layer_configs[layer_name]['IN_W'], layer_configs[layer_name]['OUT_H'], layer_configs[layer_name]['OUT_W']]
-      inst2 = [layer_configs[layer_name]['CIN_OFFSET'], layer_configs[layer_name]['WEIGHT_OFFSET'], layer_configs[layer_name]['BIAS_OFFSET'], layer_configs[layer_name]['SHIFTED_COUT_OFFSET'], layer_configs[layer_name]['FILTER_S1'], layer_configs[layer_name]['FILTER_S2'], layer_configs[layer_name]['STRIDE']]
+      inst2 = [layer_configs[layer_name]['CIN_OFFSET'], layer_configs[layer_name]['WEIGHT_OFFSET'], layer_configs[layer_name]['BIAS_OFFSET'], layer_configs[mapped_layer_name]['SHIFTED_COUT_OFFSET'], layer_configs[layer_name]['FILTER_S1'], layer_configs[layer_name]['FILTER_S2'], layer_configs[layer_name]['STRIDE']]
       inst3 = [layer_configs[layer_name]['LAYER_EN'], layer_configs[layer_name]['PREV_CIN_OFFSET'], layer_configs[layer_name]['IN_NUM_T'], layer_configs[layer_name]['OUT_NUM_T'], layer_configs[layer_name]['IN_H_T'], layer_configs[layer_name]['IN_W_T'], layer_configs[layer_name]['NXT_LAYER_BATCH']]
       inst4 = [layer_configs[layer_name]['TASK_NUM1'], layer_configs[layer_name]['TASK_NUM2'], layer_configs[layer_name]['LOCAL_ACCUM_NUM'], layer_configs[layer_name]['LOCAL_REG_NUM'], layer_configs[layer_name]['ROW_IL_FACTOR'], layer_configs[layer_name]['COL_IL_FACTOR']]
       
       if "Stage6_L1_5" in actual_layer_name:
-        macros.write("#define STAGE2R_OFFSET " + str(int(layer_configs[layer_name]['COUT_OFFSET'] + in_out_offset)) + '\n')
+        macros.write("#define STAGE2R_OFFSET " + str(int(layer_configs[mapped_layer_name]['COUT_OFFSET'] + in_out_offset)) + '\n')
         
       if "Stage6_L2_5" in actual_layer_name:
-        macros.write("#define STAGE2L_OFFSET " + str(int(layer_configs[layer_name]['COUT_OFFSET'] + in_out_offset)) + '\n')
+        macros.write("#define STAGE2L_OFFSET " + str(int(layer_configs[mapped_layer_name]['COUT_OFFSET'] + in_out_offset)) + '\n')
         
   
       insts.writelines(" ".join(str(int(e)) for e in inst0) + "\n")

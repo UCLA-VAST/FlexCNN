@@ -122,8 +122,8 @@ Here is the description of the arguments to the command above:
 -m         : The generated file from protobuf_translation
 -i         : The name of the json file containing format of the image
 -b         : The name of the json file containing the number of resources of the target FPGA board
---parallel : (True/False) Specify if you want to run the multi-threaded version of this code or not
---systolic : (True/False) Specify whether you want to search for the shape of systolic array or not
+--parallel : (True/False) Specify if you want to turn running the multi-threaded version of this code off
+--systolic : (True/False) Specify if you want to turn off the search for the optimal systolic array shapes
 -dt        : The dynamic tiling level you want to have (0: Disabled
 							1: Only number of channels will be dynamic
 							2: All the dimensions will be dynamic)
