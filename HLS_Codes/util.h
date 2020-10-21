@@ -1,5 +1,5 @@
-#ifndef __POSE_H_
-#define __POSE_H_
+#ifndef __UTIL_H_
+#define __UTIL_H_
 
 #include <cstdlib>
 #include <iostream>

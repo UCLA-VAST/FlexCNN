@@ -69,7 +69,7 @@ nothing:
 # binary container: binary_container_1.xclbin
 #
 
-binary_container_1/top_kernel.xo: ../src/hw_kernel.cpp ../src/pose.h /opt/tools/xilinx/Vivado/2018.3/include/hls_stream.h /opt/tools/xilinx/Vivado/2018.3/include/ap_int.h /opt/tools/xilinx/Vivado/2018.3/include/ap_fixed.h
+binary_container_1/top_kernel.xo: ../src/hw_kernel.cpp ../src/util.h /opt/tools/xilinx/Vivado/2018.3/include/hls_stream.h /opt/tools/xilinx/Vivado/2018.3/include/ap_int.h /opt/tools/xilinx/Vivado/2018.3/include/ap_fixed.h
 	@mkdir -p $(@D)
 	-@$(RM) $@
 	$(XOCC) $(XOCC_OPTS) -c -k top_kernel --max_memory_ports top_kernel --messageDb $(subst .xo,.mdb,$@) -I"$(<D)" --xp misc:solution_name=_xocc_compile_binary_container_1_top_kernel -o"$@" "$<" --kernel_frequency 310
@@ -82,11 +82,11 @@ binary_container_1.xclbin: $(BINARY_CONTAINER_1_OBJS)
 # host rules
 #
 
-src/cnn_sw.o: ../src/cnn_sw.cpp ../src/pose.h
+src/cnn_sw.o: ../src/cnn_sw.cpp ../src/util.h
 	@mkdir -p $(@D)
 	$(SDX_CXX) $(CXXFLAGS) -DSDX_PLATFORM=$(SDX_PLATFORM) -D__USE_XOPEN2K8 -I/opt/tools/xilinx/SDx/2018.3/runtime/include/1_2/ -I/opt/tools/xilinx/Vivado/2018.3/include/ -O2 -Wall -c -fmessage-length=0 -o "$@" "$<"
 
-src/host.o: ../src/host.cpp ../src/xcl2.hpp ../src/pose.h
+src/host.o: ../src/host.cpp ../src/xcl2.hpp ../src/util.h
 	@mkdir -p $(@D)
 	$(SDX_CXX) $(CXXFLAGS) -DSDX_PLATFORM=$(SDX_PLATFORM) -D__USE_XOPEN2K8 -I/opt/tools/xilinx/SDx/2018.3/runtime/include/1_2/ -I/opt/tools/xilinx/Vivado/2018.3/include/ -O2 -Wall -c -fmessage-length=0 -o "$@" "$<"
 

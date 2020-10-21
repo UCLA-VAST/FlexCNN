@@ -175,7 +175,7 @@ cd $PRJ_PATH/HLS_Codes
 ````
 2. In the `auto_compile/inst_gen` folder, change the `tile.json` file to the systolic array size you want.
 
-3. In the `HLS_Codes` folder, change the SIMD_LANE in `pose.h` to the SIMD factor you want.
+3. In the `HLS_Codes` folder, change the SIMD_LANE in `util.h` to the SIMD factor you want.
 
 4. In the `HLS_Codes/systolic_array_kernel` folder, change the followings in `cnn_features.json` to the configs you want. If you have followed the DSE process of last section, you can look for these values in `opt_params.json`.
 ````bash

@@ -1,6 +1,6 @@
 open_project pose_prj
 set_top top_kernel
-add_files pose.h
+add_files util.h
 add_files kernel.cpp
 add_files cnn_sw.cpp
 add_files common_header_U1.h

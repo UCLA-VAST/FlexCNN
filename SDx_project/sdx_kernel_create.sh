@@ -16,8 +16,8 @@ python hw_kernel_modify.py -i src/hw_kernel0.cpp -o src/hw_kernel.cpp
 # copy params.h to SDx project
 cp ../HLS_Codes/params.h ./src/
 
-# copy pose.h to SDx project
-cp ../HLS_Codes/pose.h ./src
+# copy util.h to SDx project
+cp ../HLS_Codes/util.h ./src
 
 # delete the extra kernel file
 rm ./src/hw_kernel0.cpp

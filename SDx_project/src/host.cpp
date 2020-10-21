@@ -28,7 +28,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 **********/
 #include "xcl2.hpp"
-#include "pose.h"
+#include "util.h"
 #include <vector>
 #include <sys/time.h>
 

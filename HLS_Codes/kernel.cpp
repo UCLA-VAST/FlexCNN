@@ -1,4 +1,4 @@
-#include "pose.h"
+#include "util.h"
 
 /**
  * Function list: 
@@ -511,7 +511,7 @@ void cin_load(
 	uint channel_iter = 0;
 	while(!done){
 		// Read and extract the parameters/config from the instructions
-		// Refer to pose.h or the README of the repo to find how the instructions are made
+		// Refer to util.h or the README of the repo to find how the instructions are made
 		// inst0 : The hardware sizes of each dimension (the sizes after tiling is applied)
 		LAYER_IN_NUM_HW  = config[0 + layer_iter * CONFIG_PARAMS];
 		LAYER_OUT_NUM_HW = config[1 + layer_iter * CONFIG_PARAMS];
