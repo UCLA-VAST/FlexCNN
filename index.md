@@ -13,15 +13,15 @@ In this repo, we use [OpenPose](https://arxiv.org/abs/1611.08050) to demonstrate
 1. [Hardware and Operating System](#hardware-and-operating-system)
 2. [Requirements and Dependencies](#requirements-and-dependencies)
 3. [Project File Tree](#project-file-tree)
-4. [Run the Project](#run-the-existing-project)
+4. [Run the Existing Project](#run-the-existing-project)
 5. [Build Your Own Deep Learning Accelerator](#build-your-own-hardware)
 6. [Citation](#citation)
 
 
 ## Hardware and Operating System
 ### Development
-For development, the OS should be **Ubuntu 18.04 LTS**
-## Testing and Deployment 
+For development, we have used **Ubuntu 18.04 LTS** as the OS.
+### Testing and Deployment 
 For testing and depolyment, despite the os requirement above, the server/PC should also equips with [Xilinx Virtex UltraScale+ FPGA VCU1525 Development Kit](https://www.xilinx.com/products/boards-and-kits/vcu1525-a.html)
 
 ## Requirements and Dependencies
