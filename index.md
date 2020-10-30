@@ -14,7 +14,7 @@ In this repo, we use [OpenPose](https://arxiv.org/abs/1611.08050) to demonstrate
 2. [Requirements and Dependencies](#requirements-and-dependencies)
 3. [Project File Tree](#project-file-tree)
 4. [Run the Project](#run-the-existing-project)
-5. [Build Your Own Hardware](#build-your-own-hardware)
+5. [Build Your Own Deep Learning Accelerator](#build-your-own-hardware)
 6. [Citation](#citation)
 
 
@@ -82,7 +82,7 @@ You should see your video pops up showing the poses of people in that.
 
 
 
-## Build Your Own Hardware
+## Build Your Own Deep Learning Accelerator
 
 Setting environments. Please note that you should modify `env.sh` with the path to your Xilinx environments.
 ````bash
@@ -152,13 +152,13 @@ There will be four files generated:
 - `weight_offset.dat`: helps the host program to load the weights.
 - `bias_offset.dat`: helps the host program to load the bias.
 
-The `network.insts` file contains one instruction for each of the layers. The instructions are filled as follows:
+The `network.insts` file contains one VLIW-like instruction for each of the layers. Each instruction is a concatanation of 5 lines of sub-instruction defined as follows:
 ````C
-Inst0: in_num_hw  | out_num_hw    | in_h_hw     | in_w_hw     | out_h_hw | out_w_hw
-Inst1: in_num     | out_num       | in_h        | in_w        | out_h    | out_w
-Inst2: cin_offset | weight_offset | bias_offset | cout_offset | filter_s1, filter_s2 | stride
-Inst3: layer_en: conv_1st_en, depth_conv_en, conv_en, relu_en, relu6_en, pool_en, up_sample_en, bias_en, inter_load_en, inter_write_en, batch_norm_en_conv, load_prev_cin, batch_norm_en_depth | prev_cin_offset | in_num_t, out_num_t | in_h_t | in_w_t | nxt_layer_batch
-Inst4: task_num1 | task_num2 | local_accum_num | local_reg_num | row_il_factor | col_il_factor
+SubInst0: in_num_hw  | out_num_hw    | in_h_hw     | in_w_hw     | out_h_hw | out_w_hw
+SubInst1: in_num     | out_num       | in_h        | in_w        | out_h    | out_w
+SubInst2: cin_offset | weight_offset | bias_offset | cout_offset | filter_s1, filter_s2 | stride
+SubInst3: layer_en: conv_1st_en, depth_conv_en, conv_en, relu_en, relu6_en, pool_en, up_sample_en, bias_en, inter_load_en, inter_write_en, batch_norm_en_conv, load_prev_cin, batch_norm_en_depth | prev_cin_offset | in_num_t, out_num_t | in_h_t | in_w_t | RESERVED
+SubInst4: task_num1 | task_num2 | local_accum_num | local_reg_num | row_il_factor | col_il_factor
 ````
 
 
