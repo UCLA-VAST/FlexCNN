@@ -756,7 +756,7 @@ def run(f_tile, f_model, f_input_config, s_output_tensors):
 
   regions_size = []
   regions_offset = []
-  cin_size = 0
+  cin_size = in_out_offset
   offset = 0
   size = 0
   for ind, r in regions.items():
