@@ -1,0 +1,8 @@
+[
+  "BatchNormalization",
+  "LeakyRelu",
+  "Conv",
+  "ConvTranspose",
+  "Add",
+  "MaxPool"
+]

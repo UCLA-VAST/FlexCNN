@@ -1,0 +1,11 @@
+{
+  "BOARD": "u250",
+  "LUT": 1728000,
+  "FF": 3456000,
+  "BRAM18K": 8000,
+  "DSP": 12288,
+  "LUT_THRES": 0.8,
+  "FF_THRES": 0.8,
+  "BRAM18K_THRES": 0.8,
+  "DSP_THRES": 0.6
+}

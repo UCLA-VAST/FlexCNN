@@ -1,0 +1,16 @@
+digraph  {
+cin_load;
+weight_load;
+bias_load;
+SA;
+act_and_bn;
+pool;
+cout_write;
+cin_load -> SA  [key=0];
+weight_load -> SA  [key=0];
+bias_load -> act_and_bn  [key=0];
+bias_load -> act_and_bn  [key=1];
+SA -> act_and_bn  [key=0];
+act_and_bn -> pool  [key=0];
+pool -> cout_write  [key=0];
+}

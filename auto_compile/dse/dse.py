@@ -27,22 +27,6 @@ def get_layers_configs(f_model, arch_modules):
 	network_in_h = input_shape["IN_H"]
 	network_in_w = input_shape["IN_W"]
 
-	# DAG
-	graph = nx.DiGraph()
-	for i in range(1, len(modelLines)):
-		line = modelLines[i]
-		layer_info = eval(line)
-		layer_name = layer_info['name']
-		graph.add_node(layer_name)
-		main_inputs = layer_info['main_input']
-		for main_input in main_inputs:
-			graph.add_edge(main_input, layer_name)
-		secondary_input = layer_info['secondary_input']
-		for sec_input in secondary_input:
-			graph.add_edge(sec_input, layer_name)
-	# save DAG as dot file
-	nx.drawing.nx_pydot.write_dot(graph, 'dag.dot')
-	# exit()
 	in_h = network_in_h
 	in_w = network_in_w
 	layer_configs = OrderedDict()
@@ -90,8 +74,6 @@ def get_layers_configs(f_model, arch_modules):
 		layer_config['DOWNSAMPLE_FACTOR'] = downsample_factor
 		layer_config['MAIN_INPUT'] = main_input
 		layer_config['SECONDARY_INPUT'] = secondary_input
-		layer_config['IN_DATA_LAYOUT'] = 0
-		# layer_config['OUT_DATA_LAYOUT'] = []
 		layer_config['MAIN_OUTPUT'] = []
 		layer_config['SECONDARY_OUTPUT'] = []
 
@@ -185,8 +167,8 @@ def get_layers_configs(f_model, arch_modules):
 		layer_config['FILTER_W'] = filter_w
 		layer_config['PAD_H'] = padding_h
 		layer_config['PAD_W'] = padding_w
-		layer_config['IN_DATA_LAYOUT'] = 1#2 if (((filter_h-stride) == 0 and (filter_w-stride) == 0) or (filter_h==tstride and filter_w==tstride)) else 1
-		layer_config['OUT_DATA_LAYOUT'] = 1#1
+		layer_config['IN_DATA_LAYOUT'] = 2 if (((filter_h-stride) == 0 and (filter_w-stride) == 0) or (filter_h==tstride and filter_w==tstride)) else 1
+		layer_config['OUT_DATA_LAYOUT'] = 1
 		layer_config['IN_W_T_DEPEND'] = []
 		layer_config['IN_NUM_DEPEND'] = []
 		layer_config['OUT_NUM_DEPEND'] = []
@@ -218,7 +200,7 @@ def get_layers_configs(f_model, arch_modules):
 				# else:
 				# 	layer_configs[secondary_input[0]]['OUT_DATA_LAYOUT'].append(layer_config['IN_DATA_LAYOUT'])
 
-	# exit()
+
 	in_num_depend_v = []
 	out_num_depend_v = []
 	for layer_name in layer_configs:
@@ -235,77 +217,95 @@ def get_layers_configs(f_model, arch_modules):
 			in_num_depend_v.append(('out', layer_config['SECONDARY_INPUT'][0]))
 			out_num_depend_v.append(('out', layer_config['LAYER_NAME']))
 
+	# # in_w_t dependency
+	# in_w_t_depend_v = []
+	# out_w_t_depend_v = []
+	for idx, layer_name in enumerate(layer_configs):
+		layer_config = layer_configs[layer_name]
+		downsample_factor = layer_config['DOWNSAMPLE_FACTOR']
+		main_output_name = 0
+		if(len(layer_config['MAIN_OUTPUT'])>0):
+			for main_output_name in layer_config['MAIN_OUTPUT']:
+			# main_output_name = layer_config['MAIN_OUTPUT'][0]
+				main_output_config = layer_configs[main_output_name]
+				main_output_layout = main_output_config['IN_DATA_LAYOUT']
+				# main_output_downsample_factor = main_output_config['DOWNSAMPLE_FACTOR']
+				# print(main_output_name, main_output_downsample_factor)
+				if(main_output_layout == 2):
+					# print(idx, layer_config['MAIN_OUTPUT'], main_output_config['DATA_LAYOUT'])
+					main_output_config['IN_W_T_DEPEND'].append(layer_name)
+
+		secondary_input_name = 0
+		if(len(layer_config['SECONDARY_OUTPUT'])>0):
+			for secondary_output_name in layer_config['SECONDARY_OUTPUT']:
+			# secondary_output_name = layer_config['SECONDARY_OUTPUT'][0] 
+				secondary_output_config = layer_configs[secondary_output_name]
+				secondary_output_layout = secondary_output_config['IN_DATA_LAYOUT']
+				# secondary_output_downsample_factor = secondary_output_config['DOWNSAMPLE_FACTOR']
+				# print(secondary_output_name, secondary_output_downsample_factor)
+				if(secondary_output_layout == 2):
+					secondary_output_config['IN_W_T_DEPEND'].append(layer_name)
+	
+	layers_order = list(layer_configs.keys())
+
+	G = nx.Graph()
+	for layer_name in layer_configs:
+		layer_config = layer_configs[layer_name]
+		G.add_node(layer_name)
+		for in_w_t_depend in layer_config['IN_W_T_DEPEND']:
+			G.add_edge(in_w_t_depend, layer_name)
+	w_t_components = list(nx.connected_components(G))
+	for component in w_t_components:
+		# sort component by layers order
+		component = sorted(component, key=lambda x: layers_order.index(x))
+
+	for layer_name in layer_configs:
+		layer_config = layer_configs[layer_name]
+		for component in w_t_components:
+			# sort component by layers order
+			component = sorted(component, key=lambda x: layers_order.index(x))
+			if layer_name in component:
+				layer_config['IN_W_T_DEPEND'] = list(component)
+				break
+			
+	if 'UNet' in f_model or 'VGG16' in f_model:
+		for layer_name in layer_configs:
+			layer_config = layer_configs[layer_name]
+			layer_config['IN_W_T_DEPEND'] = []
 	G = nx.Graph()
 	G.add_edges_from(zip(out_num_depend_v, in_num_depend_v))
 	# get disconnected components
 	num_t_components = list(nx.connected_components(G))
+	# sort list
+	num_t_components = sorted(num_t_components)
+	direction_order = ['out', 'in']
+	# for component in num_t_components:
+	# 	component = list(component)
+	# 	# sort component by layers order
+	# 	component = sorted(component, key=lambda x: layers_order.index(x[1]))
+	# 	# sort component by direction
+	# 	component = sorted(component, key=lambda x: direction_order.index(x[0]))
 
 	for layer_name in layer_configs:
 		layer_config = layer_configs[layer_name]
 		layer_config['IN_NUM_DEPEND'] = []
 		layer_config['OUT_NUM_DEPEND'] = []
 		for component in num_t_components:
+			component = list(component)
+			# sort component by layers order
+			component = sorted(component, key=lambda x: layers_order.index(x[1]))
+			# sort component by direction
+			component = sorted(component, key=lambda x: direction_order.index(x[0]))
 			if ('in', layer_name) in component:
 				layer_config['IN_NUM_DEPEND'] = list(component)
 			if ('out', layer_name) in component:
 				layer_config['OUT_NUM_DEPEND'] = list(component)
-
-	# for in_t in in_num_depend_v:
-	# 	print(in_t)
-	# exit()
-	# # in_w_t dependency
-	# in_w_t_depend_v = []
-	# out_w_t_depend_v = []
-	# for idx, layer_name in enumerate(layer_configs):
-	# 	layer_config = layer_configs[layer_name]
-	# 	downsample_factor = layer_config['DOWNSAMPLE_FACTOR']
-	# 	main_output_name = 0
-	# 	if(len(layer_config['MAIN_OUTPUT'])>0):
-	# 		for main_output_name in layer_config['MAIN_OUTPUT']:
-	# 		# main_output_name = layer_config['MAIN_OUTPUT'][0]
-	# 			main_output_config = layer_configs[main_output_name]
-	# 			main_output_layout = main_output_config['IN_DATA_LAYOUT']
-	# 			# main_output_downsample_factor = main_output_config['DOWNSAMPLE_FACTOR']
-	# 			# print(main_output_name, main_output_downsample_factor)
-	# 			if(main_output_layout == 2):
-	# 				# print(idx, layer_config['MAIN_OUTPUT'], main_output_config['DATA_LAYOUT'])
-	# 				main_output_config['IN_W_T_DEPEND'].append(layer_name)
-
-	# 	secondary_input_name = 0
-	# 	if(len(layer_config['SECONDARY_OUTPUT'])>0):
-	# 		for secondary_output_name in layer_config['SECONDARY_OUTPUT']:
-	# 		# secondary_output_name = layer_config['SECONDARY_OUTPUT'][0] 
-	# 			secondary_output_config = layer_configs[secondary_output_name]
-	# 			secondary_output_layout = secondary_output_config['IN_DATA_LAYOUT']
-	# 			# secondary_output_downsample_factor = secondary_output_config['DOWNSAMPLE_FACTOR']
-	# 			# print(secondary_output_name, secondary_output_downsample_factor)
-	# 			if(secondary_output_layout == 2):
-	# 				secondary_output_config['IN_W_T_DEPEND'].append(layer_name)
-
-	# G = nx.Graph()
 	# for layer_name in layer_configs:
 	# 	layer_config = layer_configs[layer_name]
-	# 	G.add_node(layer_name)
-	# 	for in_w_t_depend in layer_config['IN_W_T_DEPEND']:
-	# 		G.add_edge(in_w_t_depend, layer_name)
-	# w_t_components = list(nx.connected_components(G))
-	# for layer_name in layer_configs:
-	# 	layer_config = layer_configs[layer_name]
-	# 	for component in w_t_components:
-	# 		if layer_name in component:
-	# 			layer_config['IN_W_T_DEPEND'] = list(component)
-	# 			break
-	
-
-	# 	print(layer_name)
-		# for out_num_depend in layer_config['OUT_NUM_DEPEND']:
-		# 	print('\t',out_num_depend)
-		# for in_num_depend in layer_config['IN_NUM_DEPEND']:
-		# 	print('\t',in_num_depend)
-		# for in_w_t_depend in layer_config['IN_W_T_DEPEND']:
-			# print('\t',in_w_t_depend)
+	# 	print(layer_config['IN_NUM_DEPEND'])
+	# 	print(layer_config['OUT_NUM_DEPEND'])
+	# 	print(layer_config['IN_W_T_DEPEND'])
 	# exit()
-
 	return layer_configs, input_shape, 0, 0
 
 '''
@@ -351,7 +351,7 @@ def run(f_model_in, f_model_out, f_board, f_arch_in, f_arch_out, parallel_en, sy
 		# print(out_num_depend)
 		# print(in_w_depend)
 		# out_dl = layer_config['OUT_DATA_LAYOUT']
-		print(in_num, out_num, in_h, in_w, out_h, out_w, fh, fw, in_dl)
+		# print(in_num, out_num, in_h, in_w, out_h, out_w, fh, fw, in_dl)
 		# print(in_dl)
 		# print()
 
@@ -478,7 +478,7 @@ def run(f_model_in, f_model_out, f_board, f_arch_in, f_arch_out, parallel_en, sy
 									params['LAYER_OUT_W_T'] = IN_W_T*max_upsample_factor #TODO: Check this for upsampling and downsampling
 									params['LAYER_IN_NUM_T'] = IN_NUM_T
 									params['LAYER_OUT_NUM_T'] = OUT_NUM_T
-									params['LANE'] = LANE
+									params['LANE'] = SA_SIMD
 									params['SA_ROWS'] = SA_ROWS
 									params['SA_COLS'] = SA_COLS
 									params['SA_SIMD'] = SA_SIMD
@@ -499,14 +499,11 @@ def run(f_model_in, f_model_out, f_board, f_arch_in, f_arch_out, parallel_en, sy
 	else:
 		num_processes = 1
 	print('Parallelizing using %d processes...' % (num_processes))
-	# for layer in layers_order:
-	# 	print(layer)
-	# for component in w_t_components:
-	# 	print(component)
-	# w_t_components = []
-	# num_t_components = []
+
+	results = []
 	chunks = list_split(params_list, num_processes)
 	pool = multiprocessing.Pool(processes = num_processes)
+
 	results = pool.starmap(param_sweep, [(chunk, config, layer_configs, layers_order, num_t_components, w_t_components, systolic_en, solver_en, test) for chunk in chunks])
 	results = list(np.concatenate(results).flat)
 	
@@ -515,23 +512,66 @@ def run(f_model_in, f_model_out, f_board, f_arch_in, f_arch_out, parallel_en, sy
 	
 	sorted_by_latency_results = sort_by_key(results, 'opt_latency')
 	print('Sorted by latency:', len(sorted_by_latency_results))
-	# for results with the same latency, keep the one with the lowest number of opt_BRAM18K and remove the rest
-	clean_results = []
+	for result in sorted_by_latency_results:
+		result['DIM_SUM'] = result['opt_params']['SA_ROWS'] + result['opt_params']['SA_COLS'] + result['opt_params']['SA_SIMD']
+	# split results into groups with the same latency
+	groups = []
 	curr_latency = sorted_by_latency_results[0]['opt_latency']
-	min_BRAM18K = sorted_by_latency_results[0]['opt_BRAM18K']
-	best_result = sorted_by_latency_results[0]
+	curr_group = []
 	for result in sorted_by_latency_results:
 		if result['opt_latency'] == curr_latency:
+			curr_group.append(result)
+		else:
+			groups.append(curr_group)
+			curr_group = []
+			curr_group.append(result)
+			curr_latency = result['opt_latency']
+	groups.append(curr_group)
+
+	# # count number of elements in all groups
+	# elements_in_groups = 0
+	# for group in groups:
+	# 	elements_in_groups += len(group)
+	# print(f'Number of groups: {len(groups)}, number of elements in groups: {elements_in_groups}')
+
+	# sort each group by ['opt_params']['SA_SIMD']
+	for group in groups:
+		group.sort(key=lambda x: x['DIM_SUM'])
+	# split each group into subgroups with the same DIM_SUM
+	subgroups = []
+	for group in groups:
+		curr_sa_simd = group[0]['DIM_SUM']
+		curr_subgroup = []
+		for result in group:
+			if result['DIM_SUM'] == curr_sa_simd:
+				curr_subgroup.append(result)
+			else:
+				subgroups.append(curr_subgroup)
+				curr_subgroup = []
+				curr_subgroup.append(result)
+				curr_sa_simd = result['DIM_SUM']
+		subgroups.append(curr_subgroup)
+
+	# # count number of elements in all subgroups
+	# elements_in_subgroups = 0
+	# for subgroup in subgroups:
+	# 	elements_in_subgroups += len(subgroup)
+	# print(f'Number of subgroups: {len(subgroups)}, number of elements in subgroups: {elements_in_subgroups}')
+
+	# for each subgroup, keep the one with the lowest number of opt_BRAM18K
+	clean_results = []
+	for subgroup in subgroups:
+		min_BRAM18K = subgroup[0]['opt_BRAM18K']
+		best_result = subgroup[0]
+		for result in subgroup:
 			if result['opt_BRAM18K'] < min_BRAM18K:
 				best_result = result
 				min_BRAM18K = result['opt_BRAM18K']
-		else:
-			clean_results.append(best_result)
-			curr_latency = result['opt_latency']
-			min_BRAM18K = result['opt_BRAM18K']
-			best_result = result
-
+		clean_results.append(best_result)
+	# sort clean_results by latency
+	clean_results.sort(key=lambda x: x['opt_latency'])
 	sorted_by_latency_results = clean_results
+
 	# result_file = open('$STREAM_VSA_PATH/data/tests/enet_'+str(hw_params['DATA_W0'])+'.csv', 'w')
 	# print('achieved_latency, ideal_latency, dsp_eff, fps, sa_rows, sa_cols, sa_simd, lane, dsp, bram', file=result_file)
 	# print('id, achieved_latency, ideal_latency, dsp_eff, fps, sa_rows, sa_cols, sa_simd, lane, dsp, bram')
@@ -542,6 +582,7 @@ def run(f_model_in, f_model_out, f_board, f_arch_in, f_arch_out, parallel_en, sy
 	# 	print(result['opt_params']['LAYER_OUT_NUM_T_LIST'][70:-1])
 	# exit()
 	for idx in range(50 if len(sorted_by_latency_results) > 50 else len(sorted_by_latency_results)):
+	# for idx in range(len(sorted_by_latency_results)):
 		result = sorted_by_latency_results[idx]
 		# print(result['opt_params']['LAYER_OUT_NUM_T_LIST'][70:-1])
 		opt_params = result['opt_params']
@@ -564,10 +605,7 @@ def run(f_model_in, f_model_out, f_board, f_arch_in, f_arch_out, parallel_en, sy
 	table_df = pd.DataFrame(table_list[1:], columns=table_list[0])
 	print('------------------------------------------candiadate design choices------------------------------------------')
 	print(table_df)
-	# save the table to csv file
-	board_name = f_board.split('/')[-1]
-	# table_df.to_csv('./data/tests/enet_'+str(hw_params['DATA_W0'])+'_'+board_name+'.csv')
-	# exit()
+	
 
 	# design_params_file = open('../data/design_params.csv', 'w')
 	# print(sorted_by_latency_results[0])
@@ -580,6 +618,7 @@ def run(f_model_in, f_model_out, f_board, f_arch_in, f_arch_out, parallel_en, sy
 	# exit()
 	# get user input
 	design = input('Enter design id to continue: ')
+	# design = 0#input('Enter design id to continue: ')
 
 	top_result = sorted_by_latency_results[int(design)]
 	# print_layers_details(top_result, layer_configs, layers_order, hw_params)
@@ -691,7 +730,8 @@ def run(f_model_in, f_model_out, f_board, f_arch_in, f_arch_out, parallel_en, sy
 def param_sweep(params_list, config, layer_configs, layers_order, num_t_components, w_t_components, systolic_en, solver_en, test):
 	results = []
 	count = 0
-	for i in range(len(params_list)):
+	# print(len(params_list))
+	for i, params in enumerate(params_list):
 		opt_latency = np.inf
 		opt_DSP = np.inf
 		opt_BRAM18K = np.inf
@@ -699,8 +739,8 @@ def param_sweep(params_list, config, layer_configs, layers_order, num_t_componen
 		opt_params = {}
 		solver_fails = 0
 		model_fails = 0
-		params_t = params_list[i]
-		params = dict(params_t)
+		# params_t = params_list[i]
+		# params = dict(params_t)
 		IN_H_T = params['LAYER_IN_H_T']
 		IN_W_T = params['LAYER_IN_W_T'] 
 		OUT_H_T = params['LAYER_OUT_H_T']
@@ -733,35 +773,45 @@ def param_sweep(params_list, config, layer_configs, layers_order, num_t_componen
 
 		count += 1
 
-		latency, params = model_latency_est(params, layer_configs, layers_order, config['DYNAMIC_TILING_LEVEL'])
+		latency, new_params = model_latency_est(params, layer_configs, layers_order, config['DYNAMIC_TILING_LEVEL'])
+		# print(latency, params)
+		# if params == {'DATA_W0': 32, 'DATA_W1': 32, 'DATA_W2': 32, 'BUS_W': 512, 'DATA_T0': 'float', 'DATA_T1': 'float', 'DATA_T2': 'float', 'K_T': 16, 'LAYER_IN_H_T': 32, 'LAYER_IN_W_T': 144, 'LAYER_OUT_H_T': 64, 'LAYER_OUT_W_T': 288, 'LAYER_IN_NUM_T': 64, 'LAYER_OUT_NUM_T': 64, 'LANE': 8, 'SA_ROWS': 8, 'SA_COLS': 9, 'SA_SIMD': 8, 'FRE': 220}:
+		# 	print(latency)
+		# 	for key in layer_configs:
+		# 		layer_config = layer_configs[key]
+		# 		for elem in layer_config:
+		# 			print(f'\t{elem}: {layer_config[elem]}')
+		# 	for layer_order in layers_order:
+		# 		print(layer_order)
+		# 	print(config['DYNAMIC_TILING_LEVEL'])
 		if latency == np.inf:
 			continue
 
-		model_fails += params['MODEL_FAIL']
+		model_fails += new_params['MODEL_FAIL']
 
 
-		cur_fps = params['FRE'] * 1e6 * (1 / latency)
-		opt_fps = params['FRE'] * 1e6 * (1 / opt_latency)
+		cur_fps = new_params['FRE'] * 1e6 * (1 / latency)
+		opt_fps = new_params['FRE'] * 1e6 * (1 / opt_latency)
 		
 		opt_latency = latency
 		opt_DSP = DSP
 		opt_BRAM18K = BRAM18K
-		opt_params['LAYER_IN_H_T'] = params['LAYER_IN_H_T']
-		opt_params['LAYER_IN_W_T'] = params['LAYER_IN_W_T']
-		opt_params['LAYER_OUT_H_T'] = params['LAYER_OUT_H_T']
-		opt_params['LAYER_OUT_W_T'] = params['LAYER_OUT_W_T']
-		opt_params['LAYER_IN_NUM_T'] = params['LAYER_IN_NUM_T']
-		opt_params['LAYER_OUT_NUM_T'] = params['LAYER_OUT_NUM_T']
-		opt_params['SA_SIMD'] = params['SA_SIMD']
-		opt_params['SA_ROWS'] = params['SA_ROWS']
-		opt_params['SA_COLS'] = params['SA_COLS']
-		opt_params['LANE'] = params['LANE']
-		opt_params['LAYER_IN_NUM_T_LIST'] = list(params['LAYER_IN_NUM_T_LIST'])
-		opt_params['LAYER_OUT_NUM_T_LIST'] = list(params['LAYER_OUT_NUM_T_LIST'])
-		opt_params['LAYER_IN_H_T_LIST'] = list(params['LAYER_IN_H_T_LIST'])
-		opt_params['LAYER_IN_W_T_LIST'] = list(params['LAYER_IN_W_T_LIST'])
-		opt_params['LAYER_DSP_EFF_LIST'] = list(params['LAYER_DSP_EFF_LIST'])
-		opt_params['FRE'] = params['FRE']
+		opt_params['LAYER_IN_H_T'] = new_params['LAYER_IN_H_T']
+		opt_params['LAYER_IN_W_T'] = new_params['LAYER_IN_W_T']
+		opt_params['LAYER_OUT_H_T'] = new_params['LAYER_OUT_H_T']
+		opt_params['LAYER_OUT_W_T'] = new_params['LAYER_OUT_W_T']
+		opt_params['LAYER_IN_NUM_T'] = new_params['LAYER_IN_NUM_T']
+		opt_params['LAYER_OUT_NUM_T'] = new_params['LAYER_OUT_NUM_T']
+		opt_params['SA_SIMD'] = new_params['SA_SIMD']
+		opt_params['SA_ROWS'] = new_params['SA_ROWS']
+		opt_params['SA_COLS'] = new_params['SA_COLS']
+		opt_params['LANE'] = new_params['LANE']
+		opt_params['LAYER_IN_NUM_T_LIST'] = list(new_params['LAYER_IN_NUM_T_LIST'])
+		opt_params['LAYER_OUT_NUM_T_LIST'] = list(new_params['LAYER_OUT_NUM_T_LIST'])
+		opt_params['LAYER_IN_H_T_LIST'] = list(new_params['LAYER_IN_H_T_LIST'])
+		opt_params['LAYER_IN_W_T_LIST'] = list(new_params['LAYER_IN_W_T_LIST'])
+		opt_params['LAYER_DSP_EFF_LIST'] = list(new_params['LAYER_DSP_EFF_LIST'])
+		opt_params['FRE'] = new_params['FRE']
 
 		res = {}
 		res['opt_latency'] = opt_latency
@@ -770,9 +820,7 @@ def param_sweep(params_list, config, layer_configs, layers_order, num_t_componen
 		res['opt_params'] = opt_params
 		res['solver_fails'] = solver_fails
 		res['model_fails'] = model_fails
-
 		results.append(res)
-	# print(len(results))
 	return results
 
 if __name__ == "__main__":

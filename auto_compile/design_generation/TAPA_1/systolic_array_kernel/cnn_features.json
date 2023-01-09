@@ -1,0 +1,157 @@
+{
+  "APP_NAME": "cnn",
+  "PARAMETERS": {
+    "IN_NUM": 128,
+     "OUT_NUM": 128,
+     "IN_IMG_H": 292,
+     "IN_IMG_W": 292,
+     "OUT_IMG_H": 584,
+     "OUT_IMG_W": 584,
+     "K": 5,
+     "IN_NUM_T": 64,
+     "OUT_NUM_T": 64,
+     "IN_IMG_H_T": 22,
+     "IN_IMG_W_T": 292,
+     "OUT_IMG_H_T": 36,
+     "OUT_IMG_W_T": 576,
+     "LAYER_BATCH": 1,
+     "STRIDE": 2
+   },   
+  "ITERATORS": [
+    {
+      "VARIABLE": "out_num",
+      "BOUND": [
+        0,
+        128
+      ],
+      "TILE": {
+        "ENABLE": 1,
+        "TILE_FACTOR": 64
+      }
+    },
+    {
+      "VARIABLE": "out_img_h",
+      "BOUND": [
+        0,
+        584
+      ],
+      "TILE": {
+        "ENABLE": 1,
+        "TILE_FACTOR": 36
+      }
+    },
+    {
+      "VARIABLE": "out_img_w",
+      "BOUND": [
+        0,
+        584
+      ],
+      "TILE": {
+        "ENABLE": 1,
+        "TILE_FACTOR": 576
+      }
+    },
+    {
+      "VARIABLE": "in_num",
+      "BOUND": [
+        0,
+        128
+      ],
+      "TILE": {
+        "ENABLE": 1,
+        "TILE_FACTOR": 64
+      }
+    },
+    {
+      "VARIABLE": "p",
+      "BOUND": [
+        0,
+        5
+      ],
+      "TILE": {
+        "ENABLE": 0,
+        "TILE_FACTOR": 5
+      }
+    },
+    {
+      "VARIABLE": "q",
+      "BOUND": [
+        0,
+        5
+      ],
+      "TILE": {
+        "ENABLE": 0,
+        "TILE_FACTOR": 5
+      }
+    }
+  ],  
+  "TYPE": "local",
+  "SA_ROWS": 8,
+  "SA_COLS": 9,
+  "OP_CHANNEL_DIR": [
+    "D", 
+    "R"
+  ],
+  "RES_CHANNEL_DIR": [
+    "D"
+  ],
+  "DATA_TYPE": [
+    "float",
+    "float",
+    "float"
+  ],
+  "BUS_WIDTH": [
+    512, 
+    512, 
+    512
+  ],
+  "DATA_WIDTH": [
+    32, 
+    32, 
+    32 
+  ],
+  "SIMD_FACTOR": 8,
+  "FC_SIMD_FACTOR": [
+    8, 
+    8, 
+    8 
+  ],
+  "FC_GROUP_FACTOR": [
+    1, 
+    1, 
+    1
+  ],
+  "FC_SPLIT_FACTOR": [
+    1, 
+    1, 
+    1
+  ],
+  "IL_ENABLE": 1,
+  "ROW_IL_FACTOR": 8,
+  "COL_IL_FACTOR": 64,
+  "FIXED_EN": 0,
+  "KERNEL_ID": 1,
+  "OP_REF": [
+    "cin[IN_IMG_H][IN_IMG_W][IN_NUM]",
+    "weight[OUT_NUM][K][K][IN_NUM]"
+  ],
+  "RES_REF": [
+    "cout[OUT_IMG_H][OUT_IMG_W][OUT_NUM]"
+  ],
+  "OP_NAME": [
+    "cin",
+    "weight"
+  ],
+  "RES_NAME": [
+    "cout"
+  ],
+  "OP_DIM": [
+    3,
+    4
+  ],
+  "RES_DIM": [
+    3
+  ],
+  "INIT_VALUE": 0,
+  "MAC_STAT": "sum += op0_u[i] * op1_u[i];\n"
+}

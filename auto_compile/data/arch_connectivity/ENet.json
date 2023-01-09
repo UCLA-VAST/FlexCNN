@@ -1,0 +1,30 @@
+{
+  "name" : "ENet",
+  "nodes":[ 
+    "cin_load",
+    "weight_load",
+    "bias_load",
+    "cin_load_prev",
+    "pool",
+    "SA",
+    "upsample",
+    "concat",
+    "add",
+    "act_and_bn",
+    "cout_write"
+  ],
+  "edges":[
+    ["cin_load", "SA"],
+    ["weight_load", "SA"],
+    ["bias_load", "act_and_bn"],
+    ["bias_load", "act_and_bn"],
+    ["cin_load_prev", "pool"],
+    ["pool", "concat"],
+    ["SA", "upsample"],
+    ["upsample", "concat"],
+    ["concat", "add"],
+    ["concat", "add"],
+    ["add", "act_and_bn"],
+    ["act_and_bn", "cout_write"]
+  ]
+}

@@ -1,0 +1,407 @@
+{
+  "APP_NAME": "cnn",
+  "PARAMETERS": {
+    "IN_NUM": 128,
+    "OUT_NUM": 128,
+    "IN_IMG_H": 292,
+    "IN_IMG_W": 292,
+    "OUT_IMG_H": 584,
+    "OUT_IMG_W": 584,
+    "K": 5,
+    "IN_NUM_T": 64,
+    "OUT_NUM_T": 64,
+    "IN_IMG_H_T": 22,
+    "IN_IMG_W_T": 292,
+    "OUT_IMG_H_T": 36,
+    "OUT_IMG_W_T": 576,
+    "LAYER_BATCH": 1,
+    "STRIDE": 2
+  },
+  "ITERATORS": [
+    {
+      "VARIABLE": "out_num",
+      "BOUND": [
+        0,
+        128
+      ],
+      "TILE": {
+        "ENABLE": 1,
+        "TILE_FACTOR": 64
+      }
+    },
+    {
+      "VARIABLE": "out_img_h",
+      "BOUND": [
+        0,
+        584
+      ],
+      "TILE": {
+        "ENABLE": 1,
+        "TILE_FACTOR": 36
+      }
+    },
+    {
+      "VARIABLE": "out_img_w",
+      "BOUND": [
+        0,
+        584
+      ],
+      "TILE": {
+        "ENABLE": 1,
+        "TILE_FACTOR": 576
+      }
+    },
+    {
+      "VARIABLE": "in_num",
+      "BOUND": [
+        0,
+        128
+      ],
+      "TILE": {
+        "ENABLE": 1,
+        "TILE_FACTOR": 64
+      }
+    },
+    {
+      "VARIABLE": "p",
+      "BOUND": [
+        0,
+        5
+      ],
+      "TILE": {
+        "ENABLE": 0,
+        "TILE_FACTOR": 5
+      }
+    },
+    {
+      "VARIABLE": "q",
+      "BOUND": [
+        0,
+        5
+      ],
+      "TILE": {
+        "ENABLE": 0,
+        "TILE_FACTOR": 5
+      }
+    }
+  ],
+  "TYPE": "local",
+  "SA_ROWS": 8,
+  "SA_COLS": 9,
+  "OP_CHANNEL_DIR": [
+    "D",
+    "R"
+  ],
+  "RES_CHANNEL_DIR": [
+    "D"
+  ],
+  "DATA_TYPE": [
+    "float",
+    "float",
+    "float"
+  ],
+  "BUS_WIDTH": [
+    512,
+    512,
+    512
+  ],
+  "DATA_WIDTH": [
+    32,
+    32,
+    32
+  ],
+  "SIMD_FACTOR": 8,
+  "FC_SIMD_FACTOR": [
+    8,
+    8,
+    8
+  ],
+  "FC_GROUP_FACTOR": [
+    1,
+    1,
+    1
+  ],
+  "FC_SPLIT_FACTOR": [
+    1,
+    1,
+    1
+  ],
+  "IL_ENABLE": 1,
+  "ROW_IL_FACTOR": 8,
+  "COL_IL_FACTOR": 64,
+  "FIXED_EN": 0,
+  "KERNEL_ID": 1,
+  "OP_REF": [
+    "cin[IN_IMG_H][IN_IMG_W][IN_NUM]",
+    "weight[OUT_NUM][K][K][IN_NUM]"
+  ],
+  "RES_REF": [
+    "cout[OUT_IMG_H][OUT_IMG_W][OUT_NUM]"
+  ],
+  "OP_NAME": [
+    "cin",
+    "weight"
+  ],
+  "RES_NAME": [
+    "cout"
+  ],
+  "OP_DIM": [
+    3,
+    4
+  ],
+  "RES_DIM": [
+    3
+  ],
+  "INIT_VALUE": 0,
+  "MAC_STAT": "sum += op0_u[i] * op1_u[i];\n",
+  "OP_CHANNEL_NUM": 2,
+  "RES_CHANNEL_NUM": 1,
+  "CHANNEL_DEPTH": 2,
+  "OP_PE_SIMD_WIDTH": [
+    256,
+    256
+  ],
+  "OP_ENGINE_NUM": [
+    9,
+    8
+  ],
+  "RES_ENGINE_NUM": [
+    9
+  ],
+  "LOCAL_REG_NUM": 18432,
+  "LOCAL_ACCUM_NUM": 200,
+  "GLOBAL_ACCUM_NUM": [
+    1,
+    1
+  ],
+  "DFC_BUF_SIZE": [
+    174080,
+    12800,
+    147456
+  ],
+  "DFC_HEAD_BUF_SIZE": [
+    822272,
+    204800,
+    2654208
+  ],
+  "ARRAY_SIZE": [
+    10913792,
+    409600,
+    43655168
+  ],
+  "DF_FEED_COUNTER": [
+    {
+      "VARIABLE": "c0_counter",
+      "WIDTH": 7,
+      "BOUND": [
+        0,
+        36
+      ]
+    },
+    {
+      "VARIABLE": "c1_counter",
+      "WIDTH": 4,
+      "BOUND": [
+        0,
+        8
+      ]
+    },
+    {
+      "VARIABLE": "c2_counter",
+      "WIDTH": 7,
+      "BOUND": [
+        0,
+        64
+      ]
+    },
+    {
+      "VARIABLE": "c3_counter",
+      "WIDTH": 4,
+      "BOUND": [
+        0,
+        5
+      ]
+    },
+    {
+      "VARIABLE": "c4_counter",
+      "WIDTH": 4,
+      "BOUND": [
+        0,
+        5
+      ]
+    },
+    {
+      "VARIABLE": "c5_counter",
+      "WIDTH": 4,
+      "BOUND": [
+        0,
+        8
+      ]
+    }
+  ],
+  "DC_COLLECT_COUNTER": [
+    {
+      "VARIABLE": "c0_counter",
+      "WIDTH": 7,
+      "BOUND": [
+        0,
+        36
+      ]
+    },
+    {
+      "VARIABLE": "c1_counter",
+      "WIDTH": 4,
+      "BOUND": [
+        0,
+        8
+      ]
+    },
+    {
+      "VARIABLE": "c2_counter",
+      "WIDTH": 7,
+      "BOUND": [
+        0,
+        64
+      ]
+    },
+    {
+      "VARIABLE": "c3_counter",
+      "WIDTH": 4,
+      "BOUND": [
+        0,
+        8
+      ]
+    }
+  ],
+  "SW_KERNEL_CODE": [
+    "for (int out_num = 0; out_num < U1_OUT_NUM; out_num++){\n",
+    "  for (int out_img_h = 0; out_img_h < U1_OUT_IMG_H; out_img_h++){\n",
+    "    for (int out_img_w = 0; out_img_w < U1_OUT_IMG_W; out_img_w++){\n",
+    "      if (init == 1){\n",
+    "        global_cout[out_img_h*U1_OUT_IMG_W*U1_OUT_NUM + out_img_w*U1_OUT_NUM + out_num] = 0;\n",
+    "      }\n",
+    "      for (int in_num = 0; in_num < U1_IN_NUM; in_num++){\n",
+    "        for (int p = 0; p < U1_K; p++){\n",
+    "          for (int q = 0; q < U1_K; q++){\n",
+    "            global_cout[out_img_h*U1_OUT_IMG_W*U1_OUT_NUM + out_img_w*U1_OUT_NUM + out_num] += global_cin[(out_img_h + p)*U1_IN_IMG_W*U1_IN_NUM + (out_img_w+q)*U1_IN_NUM + in_num] * global_weight[out_num*U1_K*U1_K*U1_IN_NUM + p*U1_K*U1_IN_NUM + q*U1_IN_NUM + in_num];",
+    "          }\n",
+    "        }\n",
+    "      }\n",
+    "    }\n",
+    "  }\n",
+    "}\n"
+  ],
+  "LAST_TILE_CODE": [
+    "if (in_num_t == U1_IN_NUM - U1_IN_NUM_T){\n"
+  ],
+  "LAST_PATCH_CODE": [
+    "(in_num_t == U1_IN_NUM - U1_IN_NUM_T) && (out_num_t == U1_OUT_NUM - U1_OUT_NUM_T) && (out_img_h_t == U1_OUT_IMG_H - U1_OUT_IMG_H_T) && (out_img_w_t == U1_OUT_IMG_W - U1_OUT_IMG_W_T)"
+  ],
+  "DF_FEED_ADDR_CAL_CODE": [
+    "c5_counter * U1_SIMD_FACTOR + (c2_counter + c4_counter) * U1_IN_NUM_T + (c0_counter + c3_counter) * (U1_COL_IL_FACTOR + FILTER_S - 1) * U1_IN_NUM_T",
+    "c1_counter * FILTER_S * FILTER_S * U1_IN_NUM_T + c3_counter * FILTER_S * U1_IN_NUM_T + c4_counter * U1_IN_NUM_T + c5_counter * U1_SIMD_FACTOR"
+  ],
+  "DC_COLLECT_ADDR_CAL_CODE": [
+    "c0_counter * U1_COL_IL_FACTOR * U1_SA_ROWS * U1_ROW_IL_FACTOR + c2_counter * U1_SA_ROWS * U1_ROW_IL_FACTOR + ((8 - 1 - c3_counter) * U1_ROW_IL_FACTOR + c1_counter)"
+  ],
+  "HEAD_CODE": [
+    {
+      "DRAM_CODE": [
+        "for (ap_uint<11> out_img_h_t = 0; out_img_h_t < U1_OUT_IMG_H; out_img_h_t += U1_OUT_IMG_H_T){\n",
+        "  for (ap_uint<11> out_img_w_t = 0; out_img_w_t < U1_OUT_IMG_W; out_img_w_t += U1_OUT_IMG_W_T){\n",
+        "    unsigned int chunk_offset = out_img_h_t * U1_IN_IMG_W * U1_IN_NUM;\n",
+        "    for (int in_img_h_t = 0; in_img_h_t < U1_IN_IMG_H_T; in_img_h_t++){\n",
+        "      unsigned int local_chunk_offset = chunk_offset + in_img_h_t * U1_IN_IMG_W * U1_IN_NUM + out_img_w_t * U1_IN_NUM;\n",
+        "      memcpy((void*)(cin_buf + in_img_h_t * U1_IN_IMG_W_T * U1_IN_NUM / U1_DATA0_PACK_FACTOR), (void*)(cin + local_chunk_offset / U1_DATA0_PACK_FACTOR), sizeof(U1_data_t0) * U1_IN_IMG_W_T * U1_IN_NUM);\n",
+        "    }\n",
+        "    for (ap_uint<8> out_num_t = 0; out_num_t < U1_OUT_NUM; out_num_t += U1_OUT_NUM_T){\n",
+        "      for (ap_uint<5> in_num_t = 0; in_num_t < U1_IN_NUM / U1_SIMD_FACTOR; in_num_t += U1_IN_NUM_T / U1_SIMD_FACTOR){\n",
+        "        bool init_internal = (in_num_t == 0);\n",
+        "        bool init_final = init && init_internal;\n",
+        "        bool last = (in_num_t == (U1_IN_NUM - U1_IN_NUM_T) / U1_SIMD_FACTOR);\n"
+      ],
+      "DRAM_CODE_INDENT_INC": 4,
+      "BRAM_CODE": [
+        "for (ap_uint<5> t0 = 0; t0 < U1_OUT_IMG_W_T / U1_COL_IL_FACTOR / U1_DATA0_FC_SPLIT_FACTOR; t0++){\n",
+        "  for (ap_uint<7> t1 = 0; t1 < U1_OUT_IMG_H_T + FILTER_S - 1; t1++){\n",
+        "    for (ap_uint<8> t2 = 0; t2 < U1_COL_IL_FACTOR + FILTER_S - 1; t2++){\n",
+        "      for (ap_uint<4> t3 = 0; t3 < U1_IN_NUM_T / U1_DATA0_FC_SIMD_FACTOR; t3++){\n",
+        "      #pragma HLS PIPELINE II=1\n",
+        "        unsigned int local_in_img_w = t0 * U1_COL_IL_FACTOR + t2;\n",
+        "        unsigned int local_in_num = in_num_t * U1_SIMD_FACTOR + t3 * U1_DATA0_FC_SIMD_FACTOR;\n",
+        "        unsigned int local_in_img_h = t1;\n",
+        "        unsigned int feeder_id = t0 / U1_DATA0_FC_GROUP_FACTOR;\n",
+        "        unsigned int cin_index = local_in_img_h * U1_IN_IMG_W_T * U1_IN_NUM + local_in_img_w * U1_IN_NUM + local_in_num;\n"
+      ],
+      "BRAM_CODE_INDENT_INC": 4,
+      "BRAM_ACCESS_CODE": [
+        "[cin_bus_index]"
+      ]
+    },
+    {
+      "DRAM_CODE": [
+        "for (ap_uint<11> out_img_h_t = 0; out_img_h_t < U1_OUT_IMG_H; out_img_h_t += U1_OUT_IMG_H_T){\n",
+        "  for (ap_uint<11> out_img_w_t = 0; out_img_w_t < U1_OUT_IMG_W; out_img_w_t += U1_OUT_IMG_W_T){\n",
+        "    for (ap_uint<8> out_num_t = 0; out_num_t < U1_OUT_NUM; out_num_t += U1_OUT_NUM_T){\n",
+        "      unsigned int chunk_offset = out_num_t * FILTER_S * FILTER_S * U1_IN_NUM;\n",
+        "      memcpy((void*)weight_buf, (void*)(weight + chunk_offset / U1_DATA1_PACK_FACTOR), sizeof(U1_data_t1) * U1_OUT_NUM_T * FILTER_S * FILTER_S * U1_IN_NUM);\n",
+        "      for (ap_uint<5> in_num_t = 0; in_num_t < U1_IN_NUM / U1_SIMD_FACTOR; in_num_t += U1_IN_NUM_T / U1_SIMD_FACTOR){\n",
+        "        bool init_internal = (in_num_t == 0);\n",
+        "        bool init_final = init && init_internal;\n",
+        "        bool last = (in_num_t == (U1_IN_NUM - U1_IN_NUM_T) / U1_SIMD_FACTOR);\n"
+      ],
+      "DRAM_CODE_INDENT_INC": 4,
+      "BRAM_CODE": [
+        "for (ap_uint<4> t0 = 0; t0 < U1_OUT_NUM_T / U1_ROW_IL_FACTOR / U1_DATA1_FC_SPLIT_FACTOR; t0++){\n",
+        "  for (ap_uint<4> t1 = 0; t1 < U1_ROW_IL_FACTOR; t1++){\n",
+        "    for (ap_uint<4> t2 = 0; t2 < FILTER_S; t2++){\n",
+        "      for (ap_uint<4> t3 = 0; t3 < FILTER_S; t3++){\n",
+        "        for (ap_uint<4> t4 = 0; t4 < U1_IN_NUM_T / U1_DATA1_FC_SIMD_FACTOR; t4++){\n",
+        "        #pragma HLS PIPELINE II=1\n",
+        "          unsigned int local_out_num = t0 * U1_ROW_IL_FACTOR + t1;\n",
+        "          unsigned int local_in_num = in_num_t * U1_SIMD_FACTOR + t4 * U1_DATA1_FC_SIMD_FACTOR;\n",
+        "          unsigned int feeder_id = t0 / U1_DATA1_FC_GROUP_FACTOR;\n",
+        "          unsigned int weight_index = local_out_num * FILTER_S * FILTER_S * U1_IN_NUM + t2 * FILTER_S * U1_IN_NUM + t3 * U1_IN_NUM + local_in_num;\n"
+      ],
+      "BRAM_CODE_INDENT_INC": 5,
+      "BRAM_ACCESS_CODE": [
+        "[weight_bus_index]"
+      ]
+    },
+    {
+      "DRAM_CODE": [
+        "unsigned int chunk_offset = out_img_h_t * U1_OUT_IMG_W * U1_OUT_NUM;\n",
+        "for (int h = 0; h < U1_OUT_IMG_H_T; h++){\n",
+        "  unsigned int local_chunk_offset = chunk_offset + h * U1_OUT_IMG_W * U1_OUT_NUM + out_img_w_t * U1_OUT_NUM;\n",
+        "  memcpy((void*)(cout + local_chunk_offset / U1_DATA2_PACK_FACTOR), (void*)(cout_buf + h * U1_OUT_IMG_W_T * U1_OUT_NUM / U1_DATA2_PACK_FACTOR), sizeof(U1_data_t2) * U1_OUT_IMG_W_T * U1_OUT_NUM);\n",
+        "}\n"
+      ],
+      "DRAM_CODE_INDENT_INC": 0,
+      "DRAM_ACCESS_CODE": [
+        "[t0 * U1_DATA2_PACK_FACTOR + dup]",
+        "[t0]"
+      ],
+      "BRAM_CODE": [
+        "for (ap_uint<11> out_img_h_t = 0; out_img_h_t < U1_OUT_IMG_H; out_img_h_t += U1_OUT_IMG_H_T){\n",
+        "  for (ap_uint<11> out_img_w_t = 0; out_img_w_t < U1_OUT_IMG_W; out_img_w_t += U1_OUT_IMG_W_T){\n",
+        "    for (ap_uint<8> out_num_t = 0; out_num_t < U1_OUT_NUM; out_num_t += U1_OUT_NUM_T){\n",
+        "      for (ap_int<6> t0 = U1_OUT_IMG_W_T / U1_COL_IL_FACTOR / U1_DATA2_FC_SPLIT_FACTOR - 1; t0 >= 0; t0--){\n",
+        "        for (ap_uint<7> t1 = 0; t1 < U1_OUT_IMG_H_T; t1++){\n",
+        "          for (ap_uint<7> t2 = 0; t2 < U1_COL_IL_FACTOR; t2++){\n",
+        "            for (ap_uint<4> t3 = 0; t3 < U1_OUT_NUM_T / U1_DATA2_FC_SIMD_FACTOR; t3++){\n",
+        "              #pragma HLS PIPELINE II=1\n",
+        "              unsigned int local_out_img_w = t0 * U1_COL_IL_FACTOR + t2;\n",
+        "              unsigned int local_out_num = out_num_t + t3 * U1_DATA2_FC_SIMD_FACTOR;\n",
+        "              unsigned int local_out_img_h = t1;\n",
+        "              unsigned int cout_index = local_out_img_h * U1_OUT_IMG_W_T * U1_OUT_NUM + local_out_img_w * U1_OUT_NUM + local_out_num;\n"
+      ],
+      "BRAM_CODE_INDENT_INC": [
+        7,
+        5
+      ],
+      "BRAM_ACCESS_CODE": [
+        "local_out_img_h * U1_OUT_IMG_W_T * U1_OUT_NUM + local_out_img_w * U1_OUT_NUM + (local_out_num + offset)"
+      ]
+    }
+  ]
+}

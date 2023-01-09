@@ -1,0 +1,1 @@
+python3 inst_gen.py -mi=../post_dse_models/$1.csv -a=../post_dse_architectures/$1_arch.json -io=../insts/$1.insts

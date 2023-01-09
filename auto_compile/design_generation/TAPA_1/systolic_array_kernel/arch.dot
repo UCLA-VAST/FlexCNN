@@ -1,0 +1,25 @@
+digraph  {
+cin_load;
+weight_load;
+bias_load;
+cin_load_prev;
+pool;
+SA;
+upsample;
+concat;
+add;
+act_and_bn;
+cout_write;
+cin_load -> SA  [key=0];
+weight_load -> SA  [key=0];
+bias_load -> act_and_bn  [key=0];
+bias_load -> act_and_bn  [key=1];
+cin_load_prev -> pool  [key=0];
+pool -> concat  [key=0];
+SA -> upsample  [key=0];
+upsample -> concat  [key=0];
+concat -> add  [key=0];
+concat -> add  [key=1];
+add -> act_and_bn  [key=0];
+act_and_bn -> cout_write  [key=0];
+}

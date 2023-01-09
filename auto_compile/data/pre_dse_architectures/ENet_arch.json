@@ -1,0 +1,12 @@
+[
+  "Conv",
+  "ConvTranspose",
+  "Upsample",
+  "Pad",
+  "MaxPool",
+  "Concat",
+  "Add",
+  "BatchNormalization",
+  "PReLU",
+  "Relu"
+]

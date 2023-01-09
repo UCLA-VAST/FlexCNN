@@ -1,0 +1,21 @@
+{
+  "name" : "VGG16",
+  "nodes":[ 
+    "cin_load",
+    "weight_load",
+    "bias_load",
+    "SA",
+    "act_and_bn",
+    "pool",
+    "cout_write"
+  ],
+  "edges":[
+    ["cin_load", "SA"],
+    ["weight_load", "SA"],
+    ["bias_load", "act_and_bn"],
+    ["bias_load", "act_and_bn"],
+    ["SA", "act_and_bn"],
+    ["act_and_bn", "pool"],
+    ["pool", "cout_write"]
+  ]
+}

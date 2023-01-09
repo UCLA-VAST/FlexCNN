@@ -1,0 +1,1 @@
+echo y | xbutil reset -d 0000:d8:00.1

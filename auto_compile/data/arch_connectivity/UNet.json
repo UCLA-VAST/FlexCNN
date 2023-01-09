@@ -1,0 +1,25 @@
+{
+  "name" : "UNet",
+  "nodes":[ 
+    "cin_load",
+    "weight_load",
+    "bias_load",
+    "cin_load_prev",
+    "act_and_bn",
+    "SA",
+    "add",
+    "pool",
+    "cout_write"
+  ],
+  "edges":[
+    ["cin_load", "act_and_bn"],
+    ["weight_load", "SA"],
+    ["bias_load", "act_and_bn"],
+    ["bias_load", "act_and_bn"],
+    ["cin_load_prev", "add"],
+    ["act_and_bn", "SA"],
+    ["SA", "add"],
+    ["add", "pool"],
+    ["pool", "cout_write"]
+  ]
+}

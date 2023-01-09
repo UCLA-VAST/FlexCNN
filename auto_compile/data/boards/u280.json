@@ -1,0 +1,11 @@
+{
+  "BOARD": "u280",
+  "LUT": 1303680,
+  "FF": 2607360,
+  "BRAM18K": 4032,
+  "DSP": 9024,
+  "LUT_THRES": 0.8,
+  "FF_THRES": 0.8,
+  "BRAM18K_THRES": 0.8,
+  "DSP_THRES": 0.8
+}

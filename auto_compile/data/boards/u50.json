@@ -1,0 +1,11 @@
+{
+  "BOARD": "u50",
+  "LUT": 871680,
+  "FF": 1743360,
+  "BRAM18K": 2688,
+  "DSP": 5952,
+  "LUT_THRES": 0.8,
+  "FF_THRES": 0.8,
+  "BRAM18K_THRES": 0.8,
+  "DSP_THRES": 0.8
+}

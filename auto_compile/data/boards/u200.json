@@ -1,0 +1,11 @@
+{
+  "BOARD": "vu9p",
+  "LUT": 1182240,
+  "FF": 2364480,
+  "BRAM18K": 4320,
+  "DSP": 6840,
+  "LUT_THRES": 0.8,
+  "FF_THRES": 0.8,
+  "BRAM18K_THRES": 0.8,
+  "DSP_THRES": 0.8
+}

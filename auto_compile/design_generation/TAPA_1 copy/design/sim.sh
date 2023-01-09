@@ -1,0 +1,1 @@
+screen -dm bash -c "source env.sh; cd sim; python run_tb.py 1 89 89 0 csim &> sim.log"
