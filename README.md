@@ -1,240 +1,94 @@
 # FlexCNN
 
 ## Publication
++ Suhail Basalama, Atefeh Sohrabizadeh, Jie Wang, Licheng Guo, Jason Cong. [FlexCNN: An End-to-End Framework for Composing CNN Accelerators on FPGA](https://dl.acm.org/doi/abs/10.1145/3570928). In TRETS, 2022.
 
 + Atefeh Sohrabizadeh, Jie Wang, Jason Cong. [End-to-End Optimization of Deep Learning Applications](https://dl.acm.org/doi/abs/10.1145/3373087.3375321). In FPGA, 2020.
 
 ## About
-This repo contains the codes for building FlexCNN, an accelerator for running CNNs on FPGA, described in [here](https://dl.acm.org/doi/abs/10.1145/3373087.3375321). As mentioned in the paper, you can further integrate FlexCNN to TensorFlow and offload CNN computation of your application to FPGA.
+This repo contains the codes for building FlexCNN, an accelerator for running CNNs on FPGA, described in the papers above. As mentioned in the papers, you can further integrate FlexCNN to TensorFlow and offload CNN computation of your application to FPGA.
 
-In this repo, we use [OpenPose](https://arxiv.org/abs/1611.08050) to demonstrate our flow.
+
+The  latest version of FlexCNN is tested on U-Net, E-Net, and VGG16.
 
 ## Content
 1. [Hardware and Operating System](#hardware-and-operating-system)
 2. [Requirements and Dependencies](#requirements-and-dependencies)
-3. [Project File Tree](#project-file-tree)
-4. [Run the Project](#run-the-existing-project)
-5. [Build Your Own Hardware](#build-your-own-hardware)
+3. [Testing and Deployment](#testing-and-deployment)
 6. [Citation](#citation)
 
 
 ## Hardware and Operating System
 ### Development
-For development, the OS should be **Ubuntu 18.04 LTS**
-## Testing and Deployment 
-For testing and depolyment, despite the os requirement above, the server/PC should also equips with [Xilinx Virtex UltraScale+ FPGA VCU1525 Development Kit](https://www.xilinx.com/products/boards-and-kits/vcu1525-a.html)
+For development, the OS should be **Ubuntu 18.04.6 LTS**
 
 ## Requirements and Dependencies
 
 ### Requirements
-The [Xilinx Runtime v2018.3](https://www.xilinx.com/products/boards-and-kits/vcu1525-a.html#gettingStarted) should be installed.
+FlexCNN generate Vitis HLS code or TAPA HLS code (TAPA code is optimized for better P&R). 
+The netwrorks are tested using Vitis 2021.2.
+To install TAPA, follow this [tutorial](https://tapa.readthedocs.io/en/latest/installation.html).
 
-If you want to compile the library from source, the **Xilinx Deployment Shell v2018.3**, **Xilinx Development Shell** and **SDAccel Design Environment v2018.3** should also be installed. You can find them through [this link](https://www.xilinx.com/products/boards-and-kits/vcu1525-a.html#gettingStarted).
 
 ### Dependencies
-You should have python3.6 installed. This library uses the [**cmake**](https://cmake.org/) (version >= 3.0) as the building system and the [**googletest**](https://github.com/google/googletest) as the test framework. It also depends on the [**tensorflow**](https://www.tensorflow.org/).
+You should have Python 3.8 installed with the libraries in requirements.txt
 
+## Testing and Deployment 
+For testing and depolyment, despite the os requirement above, the server/PC should also be equipped with Alveo [U250](https://www.xilinx.com/products/boards-and-kits/alveo/u250.html) or [U280](https://www.xilinx.com/products/boards-and-kits/alveo/u280.html) Data Center Accelerator Cards.
 
-## Project File Tree
-The project file structure is shown below,
-````
-.
-+-- auto_compile # Generating hardware configurations and the instructions for running it
-+-- data         # data needed for testing the HLS kernel
-+-- HLS_Codes    # HLS codes of FlexCNN
-+-- libsacc      # library for integrating FlexCNN to TensorFlow
-+-- SDx_Project  # SDAccel Project for creating FPGA binary
-+-- tf_DSA       # TensorFlow codes for OpenPose application and our integrator
-````
-
-
-## Run the Existing Project
-
-1. In ./tf_DSA/tf_pose/sacc_utils.py change the following lines (give your project path)
-	````python
-    self.sa_dsa_path = '/path/to/libsacc/';
-	self.custom_lib_path = '/path/to/libsacc/build/lib/libsacc.so';
-	with open("/path/to/libsacc/inc/sacc_params.h", 'r') as fobj:
-    ````
-2. Follow the instructions in [./libsacc/README.md](https://github.com/UCLA-VAST/FlexCNN/blob/master/libsacc/README.md) to install the library.
-3. Setting environments. Please note that you should modify env.sh with the path to your Xilinx environments.
-    ````bash
-    cd tf_DSA
-    source env.sh
-    ````
-4. Installing packages
+### Run the Tested CNNs
+1. 
 	````bash
-    python3 -m venv venv
-	source venv/bin/activate
-	sudo apt-get install build-essential libcap-dev
-	pip3 install -r requirements.txt
-	pip3 install sacc
-	pip3 install yappi
-	sudo apt install swig
-	cd tf_pose/pafprocess/                                      
-	swig -python -c++ pafprocess.i && python3 setup.py build_ext --inplace
+    source env.sh
+		mkdir $STREAM_VSA_PATH/auto_compile/data/onnx
     ````
-5. Run the project
-    ````bash
-    ./test.sh [path/to/your/video/file]
+
+2. Download the ONNX file for [U-Net](https://drive.google.com/file/d/12LAthDE-FELXpnM8Rz4TPr6dVL6QfTNL/view?usp=share_link), [E-Net](https://drive.google.com/file/d/1H0MiMeHNRmirkCGn5dMC3sof_PFR8Q53/view?usp=share_link), or [VGG16](https://drive.google.com/file/d/1Gckmst34D8OEJKBSb_IgZrV3-vc2NyA5/view?usp=share_link), and put it in 			
+
+	````bash 
+	$STREAM_VSA_PATH/auto_compile/data/onnx/
+	````
+
+2. Generate the the design for CNN specified in generate_design.sh: 
+	````bash
+	./generate_design.sh
     ````
-You should see your video pops up showing the poses of people in that.
+	````bash
+	echo 13 | $STREAM_VSA_PATH/auto_compile/run.sh ENet ENet 32 u250 4 TAPA_1
+	````
+	This command runs the framework for ENet targeting 32-bit float implementation on u250 generating TAPA code. '4' is used for memory allocation between BRAMs and URAMs. 
 
-
-
-## Build Your Own Hardware
-
-Setting environments. Please note that you should modify `env.sh` with the path to your Xilinx environments.
-````bash
-source env.sh
-````
-
-### **Compilation System**
-We will need to generate the instructions required by the FPGA kernel and pre-process the input data and weights of the network.
-
-#### **Translating the TensorFlow graph**
-We first need to extract the information needed from protobuf file generated by TensorFlow from your CNN model.
-````bash
-cd $PRJ_PATH/auto_compile/protobuf_translation
-python3 extract_info.py -p ./protobuf.pbtxt -i ./input.json -n 'image' -o 'Openpose/concat_stage7:0'
-````
-Here is the description of the arguments to the command above:
-````bash
--p : The location where the protobuf text file is stored (do not pass the binary format)
--m : The name of the output file. This file will have the information needed by the hardware. You should pass the file to DSE in the next step.
--i : The name of the json file containing format of the image
--g : Only specify it if you have used a name for your graph in the protobuf text file. Otherwise leave it blank.
--n : The name of the first input tensor of your graph
--o : The name of the last tensor in your graph
-````
-You should pass your own protobuf file to the above command. Modify the input.json with the shape of your input tensor. Pass the name of the first tensor using argument (-n) and the last tensor using argument (-o).
-After this command is finished, it will generate a file named `network.model` that has all the information we need for the next steps.
-
-#### **Design Space Exploration**
-Now, switch to design space exploration folder to find out the optimal hardware configurations and the best tiling factors.
-The folder `dse` contains scripts to perform the design space exploration. The script `dse_p.py` can be performed as both single-thread and multi-thread. Run it preferably in multi-threaded form to make it faster. To perform design space exploration, run the command below:
-````bash
-cd ../dse
-python3 dse_p.py -m ../protobuf_translation/network.model -i ./input.json -b ./vu9p.json
-````
-Here is the description of the arguments to the command above:
-````bash
--m         : The generated file from protobuf_translation
--i         : The name of the json file containing format of the image
--b         : The name of the json file containing the number of resources of the target FPGA board
---parallel : (True/False) Specify if you want to turn running the multi-threaded version of this code off
---systolic : (True/False) Specify if you want to turn off the search for the optimal systolic array shapes
--dt        : The dynamic tiling level you want to have (0: Disabled
-							1: Only number of channels will be dynamic
-							2: All the dimensions will be dynamic)
-````
-The default is the multi-threaded form. If you want to run it in single-threaded form, change the parallel argument to False.
-You can choose the degree of dynamic tiling that you want to have by changing dynamic tiling argument (-dt). If you set it to 0, all the tiling factors will be uniform. You should choose 1 when you only want to make the tiling factor for input/output channels dynamic. Lastly, by setting it to 2, which is the default one, height and width tiling will be dynamic as well.
-
-The optimal design parameters will be in the `opt_params.json`. They are also added to the network model and stored in `network_out.model`.
-
-#### **Instruction Generation**
-Switch to the instruction generator folder and run the following command to parse the model and generate the necessary files.
-````bash
-cd ../inst_gen
-python inst_parse.py -t ./tile.json -m ../dse/network_out.model -i ./input.json
-````
-Here is the description of the arguments to the command above:
-````bash
--t : The name of the json file containing the maximum tiling factors and the systolic array size
--m : The generated file from DSE
--i : The name of the json file containing format of the image
--o : The name of the output tensors
-````
-There will be four files generated: 
-- `network.insts`: contains instructions to configure the FPGA acclerator to perform the computation tasks.
-- `params.h`: contains all the parameters required by the HLS kernel. Copy it to the ./HLS_Codes/ and SDx_project/src/ folders.
-- `weight_offset.dat`: helps the host program to load the weights.
-- `bias_offset.dat`: helps the host program to load the bias.
-
-The `network.insts` file contains one instruction for each of the layers. The instructions are filled as follows:
-````C
-Inst0: in_num_hw  | out_num_hw    | in_h_hw     | in_w_hw     | out_h_hw | out_w_hw
-Inst1: in_num     | out_num       | in_h        | in_w        | out_h    | out_w
-Inst2: cin_offset | weight_offset | bias_offset | cout_offset | filter_s1, filter_s2 | stride
-Inst3: layer_en: conv_1st_en, depth_conv_en, conv_en, relu_en, relu6_en, pool_en, up_sample_en, bias_en, inter_load_en, inter_write_en, batch_norm_en_conv, load_prev_cin, batch_norm_en_depth | prev_cin_offset | in_num_t, out_num_t | in_h_t | in_w_t | nxt_layer_batch
-Inst4: task_num1 | task_num2 | local_accum_num | local_reg_num | row_il_factor | col_il_factor
-````
-
-
-### **Build the HLS Kernel**
-
-You can either choose to use systolic arrays for the core computation unit of the convolutional layers or use a naive implementation of the `conv` module. 
-To get higher performance, it is recommended to use the systolic array version. However, if you want to check the functionality of your code faster, you may uncomment the `kernel` and `conv_core` function in `HLS_Codes/kernel.cpp` and skip the systolic array generation.
-
-Follow the below instructions to add the systolic arrays:
-
-1. Switch to the HLS Codes directory.
-````bash
-cd $PRJ_PATH/HLS_Codes
-````
-2. In the `auto_compile/inst_gen` folder, change the `tile.json` file to the systolic array size you want.
-
-3. In the `HLS_Codes` folder, change the SIMD_LANE in `util.h` to the SIMD factor you want.
-
-4. In the `HLS_Codes/systolic_array_kernel` folder, change the followings in `cnn_features.json` to the configs you want. If you have followed the DSE process of last section, you can look for these values in `opt_params.json`.
-````bash
-SA_ROWS, SA_COLS, SIMD_FACTOR
-````
-
-You should also change the values for FC_SIMD_FACTOR, ROW_IL_FACTOR, COL_IL_FACTOR. 
-````bash
-FC_SIMD_FACTOR = SIMD_FACTOR
-ROW_IL_FACTOR = OUT_NUM_T / SA_ROWS
-COL_IL_FACTOR = OUT_IMG_W_T / SA_COLS
-````
-
-5. Use the following command to generate the HLS kernel and prepare all the necessary files.
-````bash
-./design_prepare.sh
-````
-
-6. Now, you can run the HLS C simulation to verify the design.
-````bash
-vivado_hls -f hls_script.tcl
-````
-It will take several minutes or so to finish the C simulation. 
-
-### **Build the SDx Project**
-
-So far, you have generated the HLS kernel files for the FPGA accelerator. Next, you have to build the bitstream of the FPGA kernel. You need to combine all kernel files into one single file for SDx project. 
-
-1. Prepare the SDx kernel
-To start with, switch to SDx project directory.
-````bash
-cd $PRJ_PATH/SDx_project
-````
-
-2. Run the following script to generate the SDx kernel.
-````bash
-./sdx_kernel_create.sh
-````
-Now, you should be able to see all the necessary kernel files in the `src` directory.
-
-3. Build the bitstream  
-Generate the bitstream under the `System` directory.
-````bash
-cd System
-make all
-````
-It will take several hours or so to generate the bistream. You can change the target frequency in the makefile following the `--kernel_frequency [200]`.
-You wil find the host file `pose_prj.exe` and the bistream `binary_container_1.xclbin` under the same directory.
-
-4. For running the kernel, use the command:
-````bash
-./pose_prj.exe binary_container_1.xclbin
-````
-
-### **Integrate to TensorFlow**
-Now that you have the bitstream, you can follow the instructions [here](https://github.com/UCLA-VAST/FlexCNN/blob/master/libsacc/README.md) to integrate your accelerator to TensorFlow.
+	This will generate a design under the ''designs'' directory
+3. To run the C-simultation, run:
+	````bash
+	cd designs/TAPA_1_ENet_8_9_8_MEM_4_32
+	source env.sh # to set up TAPA and Xilinx libraries
+	cd sim
+	make csim_all
+	#./host.exe start_instruction_id end_instruction_id
+	./host.exe 1 89 # for ENet
+    ````
+	C-simulation should be outputed to sim/outputs/csim_output.log
+4. To generate the bitstream, run:
+	````bash
+	cd designs/TAPA_1_ENet_8_9_8_MEM_4_32
+	source env.sh # to set up TAPA and Xilinx libraries
+	cd sim
+	make hw_all
+	#./host.exe start_instruction_id end_instruction_id
+	./host.exe 1 89 --bitstream=path_to/your_bitstream.xclbin # for ENet
+    ````
 
 ## Citation
-If you find any of the ideas/codes useful for your research, please cite our paper:
+If you find any of the ideas/codes useful for your research, please cite our papers:
+
+	@article{basalama2022flexcnn,
+		title={FlexCNN: An End-to-End Framework for Composing CNN Accelerators on FPGA},
+		author={Basalama, Suhail and Sohrabizadeh, Atefeh and Wang, Jie and Guo, Licheng and Cong, Jason},
+		journal={ACM Transactions on Reconfigurable Technology and Systems},
+		year={2022},
+		publisher={ACM New York, NY}
+	}
 
 	@inproceedings{sohrabizadeh2020end,
 	  title={End-to-End Optimization of Deep Learning Applications},
