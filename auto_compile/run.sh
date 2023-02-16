@@ -45,6 +45,7 @@ python3 $STREAM_VSA_PATH/auto_compile/design_generation/generate.py \
 -mt=$5 \
 -c=$6
 
+mkdir -p $PRJ_PATH/$design_name/data/outputs
 cp $STREAM_VSA_PATH/auto_compile/data/dse_reports/out_$1$dw.txt $PRJ_PATH/$design_name/data/dse_report.txt
 cp $STREAM_VSA_PATH/auto_compile/data/dse_reports/out_$1$dw"_detailed.csv" $PRJ_PATH/$design_name/data/detailed_dse_report.csv
 cp $STREAM_VSA_PATH/auto_compile/data/insts/$design_name"_instructions.dat" $PRJ_PATH/$design_name/data/instructions.dat
