@@ -6,3 +6,5 @@ auto_compile/data/post_dse_architectures/*
 auto_compile/data/post_dse_models/*
 auto_compile/data/tests/*
 designs/*
+__pycache__/
+.python-version

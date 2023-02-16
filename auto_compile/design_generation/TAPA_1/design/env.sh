@@ -8,6 +8,6 @@ export GRB_LICENSE_FILE=/home/suhailb/gurobi.lic
 export PATH="${PATH}:${GUROBI_HOME}/bin"
 export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${GUROBI_HOME}/lib"
 
-export TAPA_CONCURRENCY=32
+export TAPA_CONCURRENCY=16 # number of threads TAPA uses
 
 echo 'done'

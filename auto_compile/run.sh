@@ -70,7 +70,7 @@ then
     -ox=$STREAM_VSA_PATH/auto_compile/data/onnx/$1.onnx \
     -mi=$STREAM_VSA_PATH/auto_compile/data/post_dse_models/$1.csv \
     -a=$STREAM_VSA_PATH/auto_compile/data/post_dse_architectures/$1_arch.json \
-    -o=$PRJ_PATH/$design_name/data/
+    -o=$PRJ_PATH/$design_name/data
 fi
 
 echo "Done!"
